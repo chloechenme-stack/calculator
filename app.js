@@ -394,45 +394,76 @@ function inferBatteryUnit(battery, size, qty) {
 }
 
 function csvRowsToProducts(rows) {
-  const headerIndex = rows.findIndex((row) => row.some((cell) => cleanText(cell).toUpperCase() === "WHOLESALER"));
-  if (headerIndex === -1) throw new Error("找不到 WHOLESALER 表头，请确认链接是 3-Product 这一页的 CSV。");
+  const headerIndex = rows.findIndex((row) => {
+    const labels = row.map((cell) => cleanText(cell).toUpperCase());
+    return labels.some((cell) => cell.includes("INVERTER MODEL")) && labels.some((cell) => cell.includes("BATTERY MODEL"));
+  });
+  if (headerIndex === -1) throw new Error("找不到 INVERTER MODEL / BATTERY MODEL 表头，请确认链接是产品价格页。");
 
   const headers = rows[headerIndex].map((cell) => cleanText(cell).toUpperCase());
   const col = (...names) => {
     const wanted = names.map((name) => name.toUpperCase());
     return headers.findIndex((header) => wanted.some((name) => header === name || header.includes(name)));
   };
+  const findQtyAfter = (startIndex) => {
+    if (startIndex < 0) return -1;
+    for (let index = startIndex + 1; index < Math.min(headers.length, startIndex + 5); index += 1) {
+      if (headers[index] === "QTY" || headers[index] === "QUANTITY") return index;
+    }
+    return -1;
+  };
   const get = (row, fallbackIndex, ...names) => {
     const index = col(...names);
     return row[index >= 0 ? index : fallbackIndex];
   };
 
-  const parsed = rows.slice(headerIndex + 1).map((row) => {
-    const wholesaler = cleanText(get(row, 0, "WHOLESALER"));
-    const inverter = cleanText(get(row, 1, "INVERTER MODEL"));
-    const battery = cleanText(get(row, 4, "BATTERY MODEL"));
-    const sellPrice = money(get(row, 20, "SELL PRICE INC GST"));
-    if (!wholesaler || !inverter || !battery || !sellPrice) return null;
+  const wholesalerIdx = col("WHOLESALER");
+  const inverterIdx = col("INVERTER MODEL");
+  const inverterPriceIdx = col("INVERTER PRICE");
+  const inverterQtyIdx = findQtyAfter(inverterPriceIdx);
+  const batteryModelIdx = col("BATTERY MODEL");
+  const batteryPriceIdx = col("BATTERY PRICE");
+  const batteryQtyIdx = findQtyAfter(batteryPriceIdx);
+  const batterySizeIdx = col("BATTERY SYSTEM SIZE");
+  const panelPriceIdx = col("PANEL TRINA", "PANEL");
+  const panelQtyIdx = col("SOLAR PANELS", "PANEL QUANTITY");
+  const productTotalIdx = col("PRODUCT TOTAL");
+  const gstCommIdx = col("GST +COMM", "GST");
 
-    const batteryQty = money(get(row, 6, "BATTERY PRICE + Bollard + INSTALL Qty", "BATTERY QTY")) || money(row[6]);
-    const batterySize = money(get(row, 7, "BATTERY SYSTEM SIZE"));
-    const productTotal = money(get(row, 14, "PRODUCT TOTAL"));
-    const gstComm = money(get(row, 15, "GST +COMM", "GST"));
+  let sectionBrand = "";
+  const parsed = rows.slice(headerIndex + 1).map((row) => {
+    const wholesaler = cleanText(row[wholesalerIdx >= 0 ? wholesalerIdx : 0]);
+    const inverter = cleanText(row[inverterIdx >= 0 ? inverterIdx : 1]);
+    const battery = cleanText(row[batteryModelIdx >= 0 ? batteryModelIdx : 4]);
+    const inv = money(row[inverterPriceIdx >= 0 ? inverterPriceIdx : 2]);
+    const bat = money(row[batteryPriceIdx >= 0 ? batteryPriceIdx : 5]);
+
+    if (inverter && !inv && !bat) {
+      sectionBrand = inverter;
+      return null;
+    }
+    if (!inverter || !battery || (!inv && !bat)) return null;
+
+    const batteryQty = money(row[batteryQtyIdx >= 0 ? batteryQtyIdx : 6]);
+    const batterySize = money(row[batterySizeIdx >= 0 ? batterySizeIdx : 7]);
+    const productTotal = money(row[productTotalIdx >= 0 ? productTotalIdx : 14]);
+    const gstComm = money(row[gstCommIdx >= 0 ? gstCommIdx : 15]);
     const margin = productTotal > 0 && gstComm > 0 ? gstComm / productTotal : 1.25;
+    const brand = inferBrand(inverter, wholesaler || sectionBrand);
 
     return {
       dynamic: true,
-      brand: inferBrand(inverter, wholesaler),
-      wholesaler,
+      brand,
+      wholesaler: wholesaler || sectionBrand || brand,
       inverter,
       battery,
-      inv: money(get(row, 2, "INVERTER PRICE")),
-      invQty: money(get(row, 3, "INVERTER PRICE Qty", "INVERTER QTY")) || money(row[3]) || 1,
-      bat: money(get(row, 5, "BATTERY PRICE")),
+      inv,
+      invQty: money(row[inverterQtyIdx >= 0 ? inverterQtyIdx : 3]) || 1,
+      bat,
       batQty: batteryQty,
-      batUnit: inferBatteryUnit(battery, batterySize, batteryQty),
-      panels: money(get(row, 10, "Solar panels/Quantity", "PANEL QTY")),
-      panelPrice: money(get(row, 9, "PANEL")) || 125,
+      batUnit: inferBatteryUnit(`${battery} ${batterySize || ""}`, batterySize, batteryQty),
+      panels: money(row[panelQtyIdx >= 0 ? panelQtyIdx : 10]),
+      panelPrice: money(row[panelPriceIdx >= 0 ? panelPriceIdx : 9]) || 125,
       margin: margin >= 1 && margin <= 1.5 ? margin : 1.25,
       min: 0,
       acCoupled: /ac\s*couple/i.test(inverter),
@@ -453,7 +484,10 @@ function buildSheetDebugText() {
     return "还没有加载 Google Sheet。请先点击“加载 Google Sheet”。";
   }
 
-  const headerIndex = lastSheetRows.findIndex((row) => row.some((cell) => cleanText(cell).toUpperCase() === "WHOLESALER"));
+  const headerIndex = lastSheetRows.findIndex((row) => {
+    const labels = row.map((cell) => cleanText(cell).toUpperCase());
+    return labels.some((cell) => cell.includes("INVERTER MODEL")) && labels.some((cell) => cell.includes("BATTERY MODEL"));
+  });
   const header = headerIndex >= 0 ? lastSheetRows[headerIndex] : lastSheetRows[0];
   const productRows = headerIndex >= 0
     ? lastSheetRows.slice(headerIndex + 1).filter((row) => row.some((cell) => cleanText(cell))).slice(0, 5)
