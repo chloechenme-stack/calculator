@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>DMG Price Calculator</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="workspace">
+        <aside class="panel controls">
+          <div class="brand-block">
+            <p class="eyebrow">DMG Solar</p>
+            <h1>价格计算器</h1>
+          </div>
+
+          <label class="field">
+            <span>品牌</span>
+            <select id="brandSelect"></select>
+          </label>
+
+          <label class="field">
+            <span>产品方案</span>
+            <select id="productSelect"></select>
+          </label>
+
+          <div class="grid-2">
+            <label class="field">
+              <span>电池数量</span>
+              <input id="batteryQty" type="number" min="0" step="1">
+            </label>
+            <label class="field">
+              <span>太阳能板数量</span>
+              <input id="panelQty" type="number" min="0" step="1">
+            </label>
+          </div>
+
+          <div class="grid-2">
+            <label class="field">
+              <span>STC 价格</span>
+              <input id="stcPrice" type="number" min="0" step="0.1" value="38">
+            </label>
+            <label class="field">
+              <span>STC 系数</span>
+              <input id="stcFactor" type="number" min="0" step="0.1" value="6.8">
+            </label>
+          </div>
+
+          <div class="toggle-row">
+            <label class="check">
+              <input id="dcCoupled" type="checkbox" checked>
+              <span>DC Coupled / WA rebate</span>
+            </label>
+            <label class="check">
+              <input id="useFloor" type="checkbox" checked>
+              <span>套用最低售价保护</span>
+            </label>
+          </div>
+
+          <div class="extras-head">
+            <h2>Extras</h2>
+            <button id="resetExtras" type="button">重置</button>
+          </div>
+          <div id="extrasList" class="extras-list"></div>
+        </aside>
+
+        <section class="panel quote">
+          <div class="quote-top">
+            <div>
+              <p class="eyebrow" id="wholesaler">Wholesaler</p>
+              <h2 id="quoteTitle">请选择方案</h2>
+              <p id="batteryName" class="muted"></p>
+            </div>
+            <button id="printBtn" class="print-btn" type="button">打印报价</button>
+          </div>
+
+          <div class="price-card">
+            <p>客户最终价</p>
+            <strong id="finalPrice">$0</strong>
+            <span id="priceNote">含 GST，已扣除补贴</span>
+          </div>
+
+          <div class="stats">
+            <div><span>电池容量</span><strong id="batterySize">0 kWh</strong></div>
+            <div><span>太阳能容量</span><strong id="solarSize">0 kW</strong></div>
+            <div><span>每 kWh</span><strong id="perKwh">$0</strong></div>
+            <div><span>Extras</span><strong id="extrasTotal">$0</strong></div>
+          </div>
+
+          <div class="breakdown">
+            <h3>价格明细</h3>
+            <dl>
+              <div><dt>产品成本</dt><dd id="productTotal">$0</dd></div>
+              <div><dt>GST + Commission</dt><dd id="gstComm">$0</dd></div>
+              <div><dt>安装费</dt><dd id="install">$0</dd></div>
+              <div><dt>Solar STC rebate</dt><dd id="solarRebate">$0</dd></div>
+              <div><dt>Battery STC rebate</dt><dd id="batteryRebate">$0</dd></div>
+              <div><dt>WA Battery rebate</dt><dd id="waRebate">$0</dd></div>
+              <div><dt>总补贴</dt><dd id="totalRebates">$0</dd></div>
+              <div><dt>基础售价</dt><dd id="baseSell">$0</dd></div>
+            </dl>
+          </div>
+
+          <div class="quote-text">
+            <div class="section-head">
+              <h3>可复制报价文字</h3>
+              <button id="copyQuoteBtn" type="button">复制</button>
+            </div>
+            <textarea id="quoteText" rows="16" spellcheck="false"></textarea>
+          </div>
+
+          <div class="compare">
+            <h3>同品牌方案</h3>
+            <div id="compareList" class="compare-list"></div>
+          </div>
+        </section>
+      </section>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>
