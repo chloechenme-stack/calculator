@@ -18,11 +18,12 @@ http://localhost:8000/
 
 ## Deploy With GitHub Pages
 
-This repo includes a GitHub Actions workflow that publishes the static site to GitHub Pages.
+This is a static site and can be published directly from the `main` branch.
 
 After pushing to GitHub:
 
 1. Open the GitHub repository.
 2. Go to `Settings` -> `Pages`.
-3. Set `Source` to `GitHub Actions`.
-4. Push to `main`; the site will deploy automatically.
+3. Set `Source` to `Deploy from a branch`.
+4. Select `main` and `/ (root)`.
+5. Save the setting; GitHub Pages will publish the site.
