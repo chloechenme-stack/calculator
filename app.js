@@ -368,7 +368,8 @@ function cleanText(value) {
 }
 
 function money(value) {
-  return num(String(value || "").replace(/[$,]/g, ""));
+  const cleaned = String(value || "").trim().replace(/[$,\s]/g, "");
+  return /^-?\d+(\.\d+)?$/.test(cleaned) ? Number(cleaned) : 0;
 }
 
 function inferBrand(inverter, wholesaler) {
@@ -394,61 +395,50 @@ function csvRowsToProducts(rows) {
   const headerIndex = rows.findIndex((row) => row.some((cell) => cleanText(cell).toUpperCase() === "WHOLESALER"));
   if (headerIndex === -1) throw new Error("找不到 WHOLESALER 表头，请确认链接是 3-Product 这一页的 CSV。");
 
+  const headers = rows[headerIndex].map((cell) => cleanText(cell).toUpperCase());
+  const col = (...names) => {
+    const wanted = names.map((name) => name.toUpperCase());
+    return headers.findIndex((header) => wanted.some((name) => header === name || header.includes(name)));
+  };
+  const get = (row, fallbackIndex, ...names) => {
+    const index = col(...names);
+    return row[index >= 0 ? index : fallbackIndex];
+  };
+
   const parsed = rows.slice(headerIndex + 1).map((row) => {
-    const wholesaler = cleanText(row[0]);
-    const inverter = cleanText(row[1]);
-    const battery = cleanText(row[4]);
-    const sellPrice = money(row[20]);
+    const wholesaler = cleanText(get(row, 0, "WHOLESALER"));
+    const inverter = cleanText(get(row, 1, "INVERTER MODEL"));
+    const battery = cleanText(get(row, 4, "BATTERY MODEL"));
+    const sellPrice = money(get(row, 20, "SELL PRICE INC GST"));
     if (!wholesaler || !inverter || !battery || !sellPrice) return null;
 
-    const batteryQty = money(row[6]);
-    const batterySize = money(row[7]);
-    const productTotal = money(row[14]);
-    const gstComm = money(row[15]);
-    const extras = [
-      money(row[21]) * money(row[22]),
-      money(row[23]) * money(row[24]),
-      money(row[25]) * money(row[26]),
-      money(row[27]) * money(row[28]),
-      money(row[29]) * money(row[30]),
-      money(row[31]) * money(row[32]),
-      money(row[33]) * money(row[34]),
-      money(row[35]) * money(row[36]),
-      money(row[37]) * money(row[38]),
-      money(row[39]) * money(row[40]),
-      money(row[41]) * money(row[42])
-    ].reduce((sum, value) => sum + value, 0);
-    const sellWithExtras = money(row[43]);
-    const promoMin = sellWithExtras > sellPrice + extras + 1 ? sellWithExtras : 0;
+    const batteryQty = money(get(row, 6, "BATTERY PRICE + Bollard + INSTALL Qty", "BATTERY QTY")) || money(row[6]);
+    const batterySize = money(get(row, 7, "BATTERY SYSTEM SIZE"));
+    const productTotal = money(get(row, 14, "PRODUCT TOTAL"));
+    const gstComm = money(get(row, 15, "GST +COMM", "GST"));
+    const margin = productTotal > 0 && gstComm > 0 ? gstComm / productTotal : 1.25;
 
     return {
+      dynamic: true,
       brand: inferBrand(inverter, wholesaler),
       wholesaler,
       inverter,
       battery,
-      inv: money(row[2]),
-      invQty: money(row[3]) || 1,
-      bat: money(row[5]),
+      inv: money(get(row, 2, "INVERTER PRICE")),
+      invQty: money(get(row, 3, "INVERTER PRICE Qty", "INVERTER QTY")) || money(row[3]) || 1,
+      bat: money(get(row, 5, "BATTERY PRICE")),
       batQty: batteryQty,
       batUnit: inferBatteryUnit(battery, batterySize, batteryQty),
-      panels: money(row[10]),
-      panelPrice: money(row[9]) || 125,
-      margin: productTotal > 0 && gstComm > 0 ? gstComm / productTotal : 1.25,
-      min: promoMin,
+      panels: money(get(row, 10, "Solar panels/Quantity", "PANEL QTY")),
+      panelPrice: money(get(row, 9, "PANEL")) || 125,
+      margin: margin >= 1 && margin <= 1.5 ? margin : 1.25,
+      min: 0,
       acCoupled: /ac\s*couple/i.test(inverter),
-      phaseQty: money(row[22]),
-      baseRemoval: money(row[28]),
-      baseDouble: money(row[30]),
-      switchQty: money(row[32]),
-      baseBackup: money(row[34]),
-      teslaEvQty: money(row[38]),
-      sigEvQty: money(row[40]),
-      baseEnclosure: money(row[42]),
-      doublePrice: money(row[29]) || undefined,
-      backupPrice: money(row[33]) || undefined,
-      teslaEvPrice: money(row[37]) || undefined,
-      sigenergyEvPrice: money(row[39]) || undefined,
-      enclosurePrice: money(row[41]) || undefined
+      doublePrice: money(get(row, 29, "EXTRAS - DOUBLE STOREY")) || undefined,
+      backupPrice: money(get(row, 33, "Essential loads backup", "Sigenergy GATEWAY Box")) || undefined,
+      teslaEvPrice: money(get(row, 37, "Tesla EV Charger")) || undefined,
+      sigenergyEvPrice: money(get(row, 39, "SIGENERGY AC EV CHARGER")) || undefined,
+      enclosurePrice: money(get(row, 41, "External Enclosure Box")) || undefined
     };
   }).filter(Boolean);
 
@@ -546,17 +536,17 @@ function calculate(product) {
 
 function setExtraDefaults(product) {
   const defaults = {
-    phase: product.phaseQty || 0,
+    phase: product.dynamic ? 0 : product.phaseQty || 0,
     splits: 0,
     optimizer: 0,
-    removal: product.baseRemoval || 0,
-    double: product.baseDouble || 0,
-    switch: product.switchQty || 0,
-    backup: product.baseBackup || 0,
+    removal: product.dynamic ? 0 : product.baseRemoval || 0,
+    double: product.dynamic ? 0 : product.baseDouble || 0,
+    switch: product.dynamic ? 0 : product.switchQty || 0,
+    backup: product.dynamic ? 0 : product.baseBackup || 0,
     smart: 0,
-    tesla: product.teslaEvQty || 0,
-    sigEv: product.sigEvQty || 0,
-    enclosure: product.baseEnclosure || 0
+    tesla: product.dynamic ? 0 : product.teslaEvQty || 0,
+    sigEv: product.dynamic ? 0 : product.sigEvQty || 0,
+    enclosure: product.dynamic ? 0 : product.baseEnclosure || 0
   };
   const prices = {
     double: product.doublePrice || 2000,
