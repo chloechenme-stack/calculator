@@ -395,7 +395,7 @@ function estimateBase(product) {
   const batteryCredit = batteryStcs(batterySize, num($("stcFactor").value)) * num($("stcPrice").value);
   const solarCredit = solarSize * num($("stcFactor").value) * num($("stcPrice").value);
   const productTotal = product.inv * product.invQty + product.bat * product.batQty + product.panelPrice * product.panels + 67 * product.panels * 1.4;
-  return Math.max(product.min, productTotal * product.margin + 2000 + 300 * solarSize + 30 * batterySize - batteryCredit - solarCredit - (product.acCoupled ? 0 : 1300));
+  return productTotal * product.margin + 2000 + 300 * solarSize + 30 * batterySize - batteryCredit - solarCredit - (product.acCoupled ? 0 : 1300);
 }
 
 renderExtras();
