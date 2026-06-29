@@ -333,6 +333,17 @@ dd {
   margin-bottom: 8px;
 }
 
+.compare-card .promo-label {
+  display: inline-block;
+  margin-bottom: 8px;
+  border-radius: 999px;
+  background: #e8f3ee;
+  color: #0e5547;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .compare-card span {
   display: block;
   color: var(--muted);

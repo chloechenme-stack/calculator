@@ -242,10 +242,26 @@ function calculate(product) {
   const gstComm = productTotal * product.margin;
   const install = 2000 + 300 * solarSize + 30 * batterySize;
   const totalRebates = batteryCredit + solarCredit + waRebate;
-  const baseRaw = gstComm + install - totalRebates;
-  const baseSell = $("useFloor").checked ? Math.max(product.min, baseRaw) : baseRaw;
+  const baseSell = gstComm + install - totalRebates;
   const extras = extraDefs.reduce((sum, [key]) => sum + num($(key + "Qty").value) * num($(key + "Price").value), 0);
-  return { batterySize, solarSize, batteryCredit, solarCredit, waRebate, productTotal, gstComm, install, totalRebates, baseSell, extras, final: baseSell + extras };
+  const beforeFloor = baseSell + extras;
+  const final = $("useFloor").checked ? Math.max(product.min, beforeFloor) : beforeFloor;
+  return {
+    batterySize,
+    solarSize,
+    batteryCredit,
+    solarCredit,
+    waRebate,
+    productTotal,
+    gstComm,
+    install,
+    totalRebates,
+    baseSell,
+    extras,
+    final,
+    promoFloor: product.min,
+    promoApplied: $("useFloor").checked && product.min > beforeFloor
+  };
 }
 
 function setExtraDefaults(product) {
@@ -334,7 +350,10 @@ function update() {
   $("waRebate").textContent = `-${fmt(result.waRebate)}`;
   $("totalRebates").textContent = `-${fmt(result.totalRebates)}`;
   $("baseSell").textContent = fmt(result.baseSell);
-  $("priceNote").textContent = result.extras > 0 ? "含 GST、补贴和已选 extras" : "含 GST，已扣除补贴";
+  $("promoFloor").textContent = result.promoApplied ? `${fmt(result.promoFloor)} 已套用` : fmt(result.promoFloor);
+  $("priceNote").textContent = result.promoApplied
+    ? `促销最低价 ${fmt(result.promoFloor)} 已套用`
+    : "按系统基础价 + extras 计算，含 GST 并已扣除补贴";
   $("quoteText").value = buildQuoteText(product, result);
   renderCompare(product.brand);
 }
@@ -359,6 +378,7 @@ System:
 
 Price:
 - System price after eligible rebates: ${fmt(result.baseSell)}
+- Promotional minimum price: ${fmt(result.promoFloor)}${result.promoApplied ? " (applied)" : ""}
 - Selected extras: ${fmt(result.extras)}
 - Total price inc. GST: ${fmt(result.final)}
 
@@ -375,10 +395,15 @@ function renderCompare(brand) {
     const active = p.index === current ? " active" : "";
     const size = p.batQty * p.batUnit;
     const solar = p.panels * 475 / 1000;
+    const estimate = estimateBase(p);
+    const promoLabel = estimate.promoApplied ? `<span class="promo-label">促销最低价</span>` : "";
+    const calculatedLabel = estimate.promoApplied ? `<span>系统计算价 ${fmt(estimate.base)}</span>` : "";
     return `<button class="compare-card${active}" type="button" data-index="${p.index}">
-      <strong>${fmt(estimateBase(p))}</strong>
+      <strong>${fmt(estimate.final)}</strong>
+      ${promoLabel}
       <span>${p.inverter}</span>
       <span>${size.toFixed(1)} kWh battery / ${solar.toFixed(2)} kW solar</span>
+      ${calculatedLabel}
     </button>`;
   }).join("");
   document.querySelectorAll(".compare-card").forEach((card) => {
@@ -395,7 +420,13 @@ function estimateBase(product) {
   const batteryCredit = batteryStcs(batterySize, num($("stcFactor").value)) * num($("stcPrice").value);
   const solarCredit = solarSize * num($("stcFactor").value) * num($("stcPrice").value);
   const productTotal = product.inv * product.invQty + product.bat * product.batQty + product.panelPrice * product.panels + 67 * product.panels * 1.4;
-  return productTotal * product.margin + 2000 + 300 * solarSize + 30 * batterySize - batteryCredit - solarCredit - (product.acCoupled ? 0 : 1300);
+  const base = productTotal * product.margin + 2000 + 300 * solarSize + 30 * batterySize - batteryCredit - solarCredit - (product.acCoupled ? 0 : 1300);
+  const promoApplied = $("useFloor").checked && product.min > base;
+  return {
+    base,
+    final: promoApplied ? product.min : base,
+    promoApplied
+  };
 }
 
 renderExtras();
