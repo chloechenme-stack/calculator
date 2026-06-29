@@ -100,6 +100,20 @@ select {
   color: var(--green);
 }
 
+.schema-debug {
+  width: 100%;
+  margin-top: 10px;
+  border: 1px solid #c8d1df;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  padding: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
 .eyebrow {
   margin: 0 0 6px;
   color: var(--blue);

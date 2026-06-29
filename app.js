@@ -482,11 +482,17 @@ function buildSheetDebugText() {
 
 async function copySheetSchema() {
   const text = buildSheetDebugText();
+  const output = $("schemaDebug");
+  output.hidden = false;
+  output.value = text;
+  output.focus();
+  output.select();
+
   try {
     await navigator.clipboard.writeText(text);
     setSourceStatus("表结构已复制。把它粘贴给我，我就能精确修正价格映射。", "ok");
   } catch {
-    window.prompt("复制失败，请手动复制下面内容：", text);
+    setSourceStatus("浏览器没有允许自动复制。下面文本框已选中，请按 Cmd+C 手动复制。", "error");
   }
 }
 
