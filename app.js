@@ -225,6 +225,8 @@ const num = (value) => Number.parseFloat(value) || 0;
 let current = 0;
 let googleAccessToken = "";
 let googleTokenClient = null;
+let lastSheetRows = [];
+let lastSheetTitle = "";
 
 function setSourceStatus(message, type = "") {
   $("sourceStatus").textContent = message;
@@ -446,6 +448,48 @@ function csvRowsToProducts(rows) {
   return parsed;
 }
 
+function buildSheetDebugText() {
+  if (!lastSheetRows.length) {
+    return "还没有加载 Google Sheet。请先点击“加载 Google Sheet”。";
+  }
+
+  const headerIndex = lastSheetRows.findIndex((row) => row.some((cell) => cleanText(cell).toUpperCase() === "WHOLESALER"));
+  const header = headerIndex >= 0 ? lastSheetRows[headerIndex] : lastSheetRows[0];
+  const productRows = headerIndex >= 0
+    ? lastSheetRows.slice(headerIndex + 1).filter((row) => row.some((cell) => cleanText(cell))).slice(0, 5)
+    : lastSheetRows.slice(1, 6);
+  const columnLines = header.map((cell, index) => `${index + 1}. ${cell || "(blank)"}`).join("\n");
+  const sampleLines = productRows.map((row, rowIndex) => {
+    const cells = header.map((name, index) => `${name || `Column ${index + 1}`}: ${row[index] || ""}`).join(" | ");
+    return `Row sample ${rowIndex + 1}: ${cells}`;
+  }).join("\n\n");
+
+  return [
+    `Sheet title: ${lastSheetTitle || "(unknown)"}`,
+    `Total rows loaded: ${lastSheetRows.length}`,
+    `Header row: ${headerIndex >= 0 ? headerIndex + 1 : "not found, using row 1"}`,
+    "",
+    "Columns:",
+    columnLines,
+    "",
+    "First product/sample rows:",
+    sampleLines || "(none)",
+    "",
+    "Parsed products preview:",
+    JSON.stringify(products.slice(0, 5), null, 2)
+  ].join("\n");
+}
+
+async function copySheetSchema() {
+  const text = buildSheetDebugText();
+  try {
+    await navigator.clipboard.writeText(text);
+    setSourceStatus("表结构已复制。把它粘贴给我，我就能精确修正价格映射。", "ok");
+  } catch {
+    window.prompt("复制失败，请手动复制下面内容：", text);
+  }
+}
+
 async function loadSheetData() {
   const button = $("loadSheetBtn");
   button.disabled = true;
@@ -457,6 +501,7 @@ async function loadSheetData() {
       const result = await loadPrivateSheetRows($("sheetUrl").value);
       rows = result.rows;
       sourceName = `Google 登录数据：${result.title}`;
+      lastSheetTitle = result.title;
     } else {
       const csvUrl = toCsvUrl($("sheetUrl").value);
       const response = await fetch(csvUrl);
@@ -465,7 +510,9 @@ async function loadSheetData() {
         throw new Error("这个 Sheet 需要登录。请先填写 OAuth Client ID 并点击 Google 登录。");
       }
       rows = parseCsv(text);
+      lastSheetTitle = "公开 CSV";
     }
+    lastSheetRows = rows;
     products = csvRowsToProducts(rows);
     current = 0;
     renderBrands();
@@ -485,6 +532,8 @@ async function loadSheetData() {
 
 function useBuiltInData() {
   products = [...defaultProducts];
+  lastSheetRows = [];
+  lastSheetTitle = "";
   current = 0;
   renderBrands();
   renderProducts();
@@ -707,6 +756,7 @@ renderProducts();
 $("googleLoginBtn").addEventListener("click", signInWithGoogle);
 $("loadSheetBtn").addEventListener("click", loadSheetData);
 $("useBuiltInBtn").addEventListener("click", useBuiltInData);
+$("copySchemaBtn").addEventListener("click", copySheetSchema);
 $("brandSelect").addEventListener("change", renderProducts);
 $("productSelect").addEventListener("change", loadProduct);
 ["batteryQty", "panelQty", "stcPrice", "stcFactor", "dcCoupled", "useFloor"].forEach((id) => $(id).addEventListener("input", update));
