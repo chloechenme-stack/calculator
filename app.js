@@ -1,4 +1,4 @@
-const products = [
+const defaultProducts = [
   { brand: "Alpha", wholesaler: "MYLEC / ENERGY SPURT", inverter: "Alpha 5kW / SMILE-G3-S5-INV", battery: "9.3kWh / SMILE-G3-BAT-9.3S", inv: 2100, invQty: 1, bat: 2750, batQty: 2, batUnit: 9.3, panels: 0, panelPrice: 125, margin: 1.3, min: 6995, phaseQty: 1, baseBackup: 1, baseRemoval: 10, baseEnclosure: 1 },
   { brand: "Alpha", wholesaler: "MYLEC / ENERGY SPURT", inverter: "Alpha 5kW AC couple / SMILE-G3-B5-INV", battery: "9.3kWh / SMILE-G3-BAT-9.3S", inv: 2100, invQty: 1, bat: 2750, batQty: 2, batUnit: 9.3, panels: 0, panelPrice: 125, margin: 1.3, min: 6595, acCoupled: true },
   { brand: "Growatt", wholesaler: "Growatt", inverter: "Growatt 5kW / SPH 5000TL-HUB", battery: "5kWh / ALP 5.0L-E1", inv: 1450, invQty: 1, bat: 1450, batQty: 3, batUnit: 5, panels: 14, panelPrice: 125, margin: 1.3, min: 6595, baseBackup: 1, baseEnclosure: 1 },
@@ -28,6 +28,8 @@ const products = [
   { brand: "Alpha New", wholesaler: "DMG / MYLEC", inverter: "Alpha Smile 5 inverter / DC / AC coupled", battery: "SMILE-13.3kWh / DO NOT SELL YET", inv: 2100, invQty: 1, bat: 3600, batQty: 2, batUnit: 13.3, panels: 0, panelPrice: 125, margin: 1.3, min: 6595 },
   { brand: "Alpha New", wholesaler: "DMG / MYLEC", inverter: "Alpha Smile 5 inverter / PV max 7.5kW", battery: "SMILE-15kWh / NOT CEC LISTED", inv: 2100, invQty: 1, bat: 3300, batQty: 1, batUnit: 15, panels: 14, panelPrice: 125, margin: 1.3, min: 6595 }
 ];
+
+let products = [...defaultProducts];
 
 const extraDefs = [
   ["phase", "3 phase", 500],
@@ -221,6 +223,283 @@ const $ = (id) => document.getElementById(id);
 const fmt = (n) => new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(Number.isFinite(n) ? n : 0);
 const num = (value) => Number.parseFloat(value) || 0;
 let current = 0;
+let googleAccessToken = "";
+let googleTokenClient = null;
+
+function setSourceStatus(message, type = "") {
+  $("sourceStatus").textContent = message;
+  $("sourceStatus").className = `source-status ${type}`.trim();
+}
+
+function parseSheetTarget(input) {
+  const url = new URL(input.trim());
+  const match = url.pathname.match(/\/spreadsheets\/d\/([^/]+)/);
+  if (!match) throw new Error("Google Sheet 链接格式不正确。");
+  return {
+    spreadsheetId: match[1],
+    gid: Number(url.searchParams.get("gid") || new URLSearchParams(url.hash.replace(/^#/, "")).get("gid") || 0)
+  };
+}
+
+function toCsvUrl(input) {
+  const trimmed = input.trim();
+  if (!trimmed) return "";
+  const url = new URL(trimmed);
+  if (url.searchParams.get("output") === "csv" || url.searchParams.get("format") === "csv") return url.toString();
+  const match = url.pathname.match(/\/spreadsheets\/d\/([^/]+)/);
+  if (!match) return url.toString();
+  const gid = url.searchParams.get("gid") || new URLSearchParams(url.hash.replace(/^#/, "")).get("gid") || "0";
+  return `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv&gid=${gid}`;
+}
+
+function waitForGoogleIdentity() {
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const timer = setInterval(() => {
+      if (window.google?.accounts?.oauth2) {
+        clearInterval(timer);
+        resolve();
+      } else if (Date.now() - started > 8000) {
+        clearInterval(timer);
+        reject(new Error("Google 登录脚本还没加载成功，请刷新页面再试。"));
+      }
+    }, 100);
+  });
+}
+
+async function signInWithGoogle() {
+  const clientId = $("googleClientId").value.trim();
+  if (!clientId) {
+    setSourceStatus("请先填写 Google OAuth Client ID。", "error");
+    return;
+  }
+
+  localStorage.setItem("googleClientId", clientId);
+  setSourceStatus("正在打开 Google 登录...", "");
+  try {
+    await waitForGoogleIdentity();
+    googleTokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: "https://www.googleapis.com/auth/spreadsheets.readonly",
+      callback: (response) => {
+        if (response.error) {
+          setSourceStatus(`Google 登录失败：${response.error}`, "error");
+          return;
+        }
+        googleAccessToken = response.access_token;
+        setSourceStatus("Google 已登录，可以读取你有权限的 Sheet。", "ok");
+      }
+    });
+    googleTokenClient.requestAccessToken({ prompt: "consent" });
+  } catch (error) {
+    setSourceStatus(`Google 登录失败：${error.message}`, "error");
+  }
+}
+
+async function fetchGoogleJson(url) {
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${googleAccessToken}`
+    }
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    const message = data.error?.message || "Google Sheets API 请求失败。";
+    throw new Error(message);
+  }
+  return data;
+}
+
+function quoteSheetTitle(title) {
+  return `'${String(title).replace(/'/g, "''")}'`;
+}
+
+async function loadPrivateSheetRows(sheetUrl) {
+  const { spreadsheetId, gid } = parseSheetTarget(sheetUrl);
+  const meta = await fetchGoogleJson(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`);
+  const sheet = meta.sheets?.find((item) => Number(item.properties.sheetId) === gid) || meta.sheets?.[0];
+  if (!sheet) throw new Error("找不到这个 spreadsheet 里的工作表。");
+
+  const range = `${quoteSheetTitle(sheet.properties.title)}!A:AR`;
+  const values = await fetchGoogleJson(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?majorDimension=ROWS`);
+  return {
+    title: sheet.properties.title,
+    rows: values.values || []
+  };
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let quoted = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    const next = text[i + 1];
+    if (quoted && char === '"' && next === '"') {
+      cell += '"';
+      i += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (!quoted && char === ",") {
+      row.push(cell);
+      cell = "";
+    } else if (!quoted && (char === "\n" || char === "\r")) {
+      if (char === "\r" && next === "\n") i += 1;
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += char;
+    }
+  }
+
+  if (cell || row.length) {
+    row.push(cell);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function cleanText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function money(value) {
+  return num(String(value || "").replace(/[$,]/g, ""));
+}
+
+function inferBrand(inverter, wholesaler) {
+  const haystack = `${inverter} ${wholesaler}`.toLowerCase();
+  if (haystack.includes("sigenergy") || haystack.includes("sigen")) return "Sigenergy";
+  if (haystack.includes("goodwe")) return "GoodWe";
+  if (haystack.includes("fox")) return "FoxESS";
+  if (haystack.includes("growatt")) return "Growatt";
+  if (haystack.includes("sungrow")) return "Sungrow";
+  if (haystack.includes("tesla") || haystack.includes("telsa")) return "Tesla";
+  if (haystack.includes("anker")) return "Anker";
+  if (haystack.includes("alpha")) return "Alpha";
+  return cleanText(wholesaler).split("/")[0].trim() || "Other";
+}
+
+function inferBatteryUnit(battery, size, qty) {
+  if (qty > 0 && size > 0) return size / qty;
+  const match = String(battery || "").match(/(\d+(?:\.\d+)?)\s*kwh/i);
+  return match ? Number(match[1]) : 0;
+}
+
+function csvRowsToProducts(rows) {
+  const headerIndex = rows.findIndex((row) => row.some((cell) => cleanText(cell).toUpperCase() === "WHOLESALER"));
+  if (headerIndex === -1) throw new Error("找不到 WHOLESALER 表头，请确认链接是 3-Product 这一页的 CSV。");
+
+  const parsed = rows.slice(headerIndex + 1).map((row) => {
+    const wholesaler = cleanText(row[0]);
+    const inverter = cleanText(row[1]);
+    const battery = cleanText(row[4]);
+    const sellPrice = money(row[20]);
+    if (!wholesaler || !inverter || !battery || !sellPrice) return null;
+
+    const batteryQty = money(row[6]);
+    const batterySize = money(row[7]);
+    const productTotal = money(row[14]);
+    const gstComm = money(row[15]);
+    const extras = [
+      money(row[21]) * money(row[22]),
+      money(row[23]) * money(row[24]),
+      money(row[25]) * money(row[26]),
+      money(row[27]) * money(row[28]),
+      money(row[29]) * money(row[30]),
+      money(row[31]) * money(row[32]),
+      money(row[33]) * money(row[34]),
+      money(row[35]) * money(row[36]),
+      money(row[37]) * money(row[38]),
+      money(row[39]) * money(row[40]),
+      money(row[41]) * money(row[42])
+    ].reduce((sum, value) => sum + value, 0);
+    const sellWithExtras = money(row[43]);
+    const promoMin = sellWithExtras > sellPrice + extras + 1 ? sellWithExtras : 0;
+
+    return {
+      brand: inferBrand(inverter, wholesaler),
+      wholesaler,
+      inverter,
+      battery,
+      inv: money(row[2]),
+      invQty: money(row[3]) || 1,
+      bat: money(row[5]),
+      batQty: batteryQty,
+      batUnit: inferBatteryUnit(battery, batterySize, batteryQty),
+      panels: money(row[10]),
+      panelPrice: money(row[9]) || 125,
+      margin: productTotal > 0 && gstComm > 0 ? gstComm / productTotal : 1.25,
+      min: promoMin,
+      acCoupled: /ac\s*couple/i.test(inverter),
+      phaseQty: money(row[22]),
+      baseRemoval: money(row[28]),
+      baseDouble: money(row[30]),
+      switchQty: money(row[32]),
+      baseBackup: money(row[34]),
+      teslaEvQty: money(row[38]),
+      sigEvQty: money(row[40]),
+      baseEnclosure: money(row[42]),
+      doublePrice: money(row[29]) || undefined,
+      backupPrice: money(row[33]) || undefined,
+      teslaEvPrice: money(row[37]) || undefined,
+      sigenergyEvPrice: money(row[39]) || undefined,
+      enclosurePrice: money(row[41]) || undefined
+    };
+  }).filter(Boolean);
+
+  if (!parsed.length) throw new Error("CSV 已读取，但没有找到可用产品行。");
+  return parsed;
+}
+
+async function loadSheetData() {
+  const button = $("loadSheetBtn");
+  button.disabled = true;
+  setSourceStatus("正在读取 Google Sheet...", "");
+  try {
+    let rows;
+    let sourceName = "公开 CSV";
+    if (googleAccessToken) {
+      const result = await loadPrivateSheetRows($("sheetUrl").value);
+      rows = result.rows;
+      sourceName = `Google 登录数据：${result.title}`;
+    } else {
+      const csvUrl = toCsvUrl($("sheetUrl").value);
+      const response = await fetch(csvUrl);
+      const text = await response.text();
+      if (!response.ok || /ServiceLogin|accounts\.google\.com|Sign in/i.test(text)) {
+        throw new Error("这个 Sheet 需要登录。请先填写 OAuth Client ID 并点击 Google 登录。");
+      }
+      rows = parseCsv(text);
+    }
+    products = csvRowsToProducts(rows);
+    current = 0;
+    renderBrands();
+    $("brandSelect").value = products[0].brand;
+    renderProducts();
+    setSourceStatus(`已从 ${sourceName} 加载 ${products.length} 个产品配置`, "ok");
+  } catch (error) {
+    products = [...defaultProducts];
+    current = 0;
+    renderBrands();
+    renderProducts();
+    setSourceStatus(`读取失败：${error.message} 当前仍使用内置数据。`, "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function useBuiltInData() {
+  products = [...defaultProducts];
+  current = 0;
+  renderBrands();
+  renderProducts();
+  setSourceStatus("当前使用内置数据", "");
+}
 
 function batteryStcs(kwh, factor) {
   const weighted = Math.min(kwh, 14) + Math.max(Math.min(kwh, 28) - 14, 0) * 0.6 + Math.max(Math.min(kwh, 50) - 28, 0) * 0.15;
@@ -245,7 +524,8 @@ function calculate(product) {
   const baseSell = gstComm + install - totalRebates;
   const extras = extraDefs.reduce((sum, [key]) => sum + num($(key + "Qty").value) * num($(key + "Price").value), 0);
   const beforeFloor = baseSell + extras;
-  const final = $("useFloor").checked ? Math.max(product.min, beforeFloor) : beforeFloor;
+  const promoFloor = product.min || 0;
+  const final = $("useFloor").checked ? Math.max(promoFloor, beforeFloor) : beforeFloor;
   return {
     batterySize,
     solarSize,
@@ -259,8 +539,8 @@ function calculate(product) {
     baseSell,
     extras,
     final,
-    promoFloor: product.min,
-    promoApplied: $("useFloor").checked && product.min > beforeFloor
+    promoFloor,
+    promoApplied: $("useFloor").checked && promoFloor > beforeFloor
   };
 }
 
@@ -430,9 +710,13 @@ function estimateBase(product) {
 }
 
 renderExtras();
+$("googleClientId").value = localStorage.getItem("googleClientId") || "";
 renderBrands();
 renderProducts();
 
+$("googleLoginBtn").addEventListener("click", signInWithGoogle);
+$("loadSheetBtn").addEventListener("click", loadSheetData);
+$("useBuiltInBtn").addEventListener("click", useBuiltInData);
 $("brandSelect").addEventListener("change", renderProducts);
 $("productSelect").addEventListener("change", loadProduct);
 ["batteryQty", "panelQty", "stcPrice", "stcFactor", "dcCoupled", "useFloor"].forEach((id) => $(id).addEventListener("input", update));

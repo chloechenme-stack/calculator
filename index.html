@@ -15,6 +15,23 @@
             <h1>价格计算器</h1>
           </div>
 
+          <div class="source-panel">
+            <label class="field">
+              <span>Google OAuth Client ID</span>
+              <input id="googleClientId" type="text" placeholder="xxxx.apps.googleusercontent.com">
+            </label>
+            <label class="field">
+              <span>Google Sheet 数据源</span>
+              <input id="sheetUrl" type="url" value="https://docs.google.com/spreadsheets/d/1mDvDIHcHQgH8_BkguTExC2pBUKJeaBYft3yROmVHu34/edit?gid=959073985#gid=959073985">
+            </label>
+            <div class="source-actions">
+              <button id="googleLoginBtn" type="button">Google 登录</button>
+              <button id="loadSheetBtn" type="button">加载 Google Sheet</button>
+              <button id="useBuiltInBtn" type="button">使用内置数据</button>
+            </div>
+            <p id="sourceStatus" class="source-status">当前使用内置数据</p>
+          </div>
+
           <label class="field">
             <span>品牌</span>
             <select id="brandSelect"></select>
@@ -118,6 +135,7 @@
         </section>
       </section>
     </main>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="app.js"></script>
   </body>
 </html>
