@@ -39,6 +39,7 @@ const extraDefs = [
   ["double", "Double storey", 2000],
   ["switch", "Switchboard / full-home backup", 1650],
   ["backup", "Essential backup / Gateway", 600],
+  ["wholeHome", "Whole-home backup", 2000],
   ["smart", "Smart meter", 0],
   ["tesla", "Tesla EV charger", 1995],
   ["sigEv", "Sigenergy AC EV charger", 1995],
@@ -429,6 +430,15 @@ function csvRowsToProducts(rows) {
   const panelQtyIdx = col("SOLAR PANELS", "PANEL QUANTITY");
   const productTotalIdx = col("PRODUCT TOTAL");
   const gstCommIdx = col("GST +COMM", "GST");
+  const sheetFinalIdx = col("SELL PRICE WITH EXTRAS");
+  const extraPair = (row, key, ...names) => {
+    const priceIdx = col(...names);
+    const qtyIdx = findQtyAfter(priceIdx);
+    return {
+      price: money(row[priceIdx]),
+      qty: money(row[qtyIdx])
+    };
+  };
 
   let sectionBrand = "";
   const parsed = rows.slice(headerIndex + 1).map((row) => {
@@ -450,9 +460,46 @@ function csvRowsToProducts(rows) {
     const gstComm = money(row[gstCommIdx >= 0 ? gstCommIdx : 15]);
     const margin = productTotal > 0 && gstComm > 0 ? gstComm / productTotal : 1.25;
     const brand = inferBrand(inverter, wholesaler || sectionBrand);
+    const splits = extraPair(row, "splits", "EXTRA SPLITS");
+    const optimizer = extraPair(row, "optimizer", "OPTIMIZER");
+    const removal = extraPair(row, "removal", "PANEL REMOVAL");
+    const doubleStorey = extraPair(row, "double", "EXTRAS DOUBLE", "DOUBLE STOREY");
+    const switchboard = extraPair(row, "switch", "SWITCHBOARD");
+    const backup = extraPair(row, "backup", "ESSENTIAL LOADS BACKUP");
+    const wholeHome = extraPair(row, "wholeHome", "WHOLE HOUSE BACKUP");
+    const tesla = extraPair(row, "tesla", "TESLA EV CHARGER");
+    const sigEv = extraPair(row, "sigEv", "SIGENERGY AC EV");
+    const enclosure8 = extraPair(row, "enclosure", "EXTERNAL ENCLOSURE BOX 8");
+    const enclosure12 = extraPair(row, "enclosure", "EXTERNAL ENCLOSURE BOX 12");
+    const enclosure = enclosure12.qty ? enclosure12 : enclosure8;
 
     return {
       dynamic: true,
+      sheetFinal: money(row[sheetFinalIdx]),
+      extraDefaults: {
+        splits: splits.qty,
+        optimizer: optimizer.qty,
+        removal: removal.qty,
+        double: doubleStorey.qty,
+        switch: switchboard.qty,
+        backup: backup.qty,
+        wholeHome: wholeHome.qty,
+        tesla: tesla.qty,
+        sigEv: sigEv.qty,
+        enclosure: enclosure.qty
+      },
+      extraPrices: {
+        splits: splits.price || undefined,
+        optimizer: optimizer.price || undefined,
+        removal: removal.price || undefined,
+        double: doubleStorey.price || undefined,
+        switch: switchboard.price || undefined,
+        backup: backup.price || undefined,
+        wholeHome: wholeHome.price || undefined,
+        tesla: tesla.price || undefined,
+        sigEv: sigEv.price || undefined,
+        enclosure: enclosure.price || undefined
+      },
       brand,
       wholesaler: wholesaler || sectionBrand || brand,
       inverter,
@@ -467,11 +514,11 @@ function csvRowsToProducts(rows) {
       margin: margin >= 1 && margin <= 1.5 ? margin : 1.25,
       min: 0,
       acCoupled: /ac\s*couple/i.test(inverter),
-      doublePrice: money(get(row, 29, "EXTRAS - DOUBLE STOREY")) || undefined,
-      backupPrice: money(get(row, 33, "Essential loads backup", "Sigenergy GATEWAY Box")) || undefined,
-      teslaEvPrice: money(get(row, 37, "Tesla EV Charger")) || undefined,
-      sigenergyEvPrice: money(get(row, 39, "SIGENERGY AC EV CHARGER")) || undefined,
-      enclosurePrice: money(get(row, 41, "External Enclosure Box")) || undefined
+      doublePrice: doubleStorey.price || undefined,
+      backupPrice: backup.price || undefined,
+      teslaEvPrice: tesla.price || undefined,
+      sigenergyEvPrice: sigEv.price || undefined,
+      enclosurePrice: enclosure.price || undefined
     };
   }).filter(Boolean);
 
@@ -604,7 +651,9 @@ function calculate(product) {
   const extras = extraDefs.reduce((sum, [key]) => sum + num($(key + "Qty").value) * num($(key + "Price").value), 0);
   const beforeFloor = baseSell + extras;
   const promoFloor = product.min || 0;
-  const final = $("useFloor").checked ? Math.max(promoFloor, beforeFloor) : beforeFloor;
+  const formulaFinal = $("useFloor").checked ? Math.max(promoFloor, beforeFloor) : beforeFloor;
+  const sheetFinal = product.sheetFinal || 0;
+  const final = sheetFinal || formulaFinal;
   return {
     batterySize,
     solarSize,
@@ -618,28 +667,39 @@ function calculate(product) {
     baseSell,
     extras,
     final,
+    formulaFinal,
+    sheetFinal,
+    sheetDelta: sheetFinal ? sheetFinal - formulaFinal : 0,
     promoFloor,
     promoApplied: $("useFloor").checked && promoFloor > beforeFloor
   };
 }
 
 function setExtraDefaults(product) {
+  const importedDefaults = product.extraDefaults || {};
   const defaults = {
-    phase: product.dynamic ? 0 : product.phaseQty || 0,
-    splits: 0,
-    optimizer: 0,
-    removal: product.dynamic ? 0 : product.baseRemoval || 0,
-    double: product.dynamic ? 0 : product.baseDouble || 0,
-    switch: product.dynamic ? 0 : product.switchQty || 0,
-    backup: product.dynamic ? 0 : product.baseBackup || 0,
+    phase: product.dynamic ? importedDefaults.phase || 0 : product.phaseQty || 0,
+    splits: importedDefaults.splits || 0,
+    optimizer: importedDefaults.optimizer || 0,
+    removal: product.dynamic ? importedDefaults.removal || 0 : product.baseRemoval || 0,
+    double: product.dynamic ? importedDefaults.double || 0 : product.baseDouble || 0,
+    switch: product.dynamic ? importedDefaults.switch || 0 : product.switchQty || 0,
+    backup: product.dynamic ? importedDefaults.backup || 0 : product.baseBackup || 0,
+    wholeHome: product.dynamic ? importedDefaults.wholeHome || 0 : 0,
     smart: 0,
-    tesla: product.dynamic ? 0 : product.teslaEvQty || 0,
-    sigEv: product.dynamic ? 0 : product.sigEvQty || 0,
-    enclosure: product.dynamic ? 0 : product.baseEnclosure || 0
+    tesla: product.dynamic ? importedDefaults.tesla || 0 : product.teslaEvQty || 0,
+    sigEv: product.dynamic ? importedDefaults.sigEv || 0 : product.sigEvQty || 0,
+    enclosure: product.dynamic ? importedDefaults.enclosure || 0 : product.baseEnclosure || 0
   };
+  const importedPrices = product.extraPrices || {};
   const prices = {
+    splits: importedPrices.splits || 200,
+    optimizer: importedPrices.optimizer || 70,
+    removal: importedPrices.removal || 40,
     double: product.doublePrice || 2000,
+    switch: importedPrices.switch || 1650,
     backup: product.backupPrice || 600,
+    wholeHome: importedPrices.wholeHome || 2000,
     tesla: product.teslaEvPrice || 1995,
     sigEv: product.sigenergyEvPrice || 1995,
     enclosure: product.enclosurePrice || 440
@@ -710,7 +770,11 @@ function update() {
   $("totalRebates").textContent = `-${fmt(result.totalRebates)}`;
   $("baseSell").textContent = fmt(result.baseSell);
   $("promoFloor").textContent = result.promoApplied ? `${fmt(result.promoFloor)} 已套用` : fmt(result.promoFloor);
-  $("priceNote").textContent = result.promoApplied
+  $("sheetFinal").textContent = result.sheetFinal ? fmt(result.sheetFinal) : "未读取";
+  $("sheetDelta").textContent = result.sheetFinal ? fmt(result.sheetDelta) : "未读取";
+  $("priceNote").textContent = result.sheetFinal
+    ? `按 Google Sheet 黄列价显示，软件重算差异 ${fmt(result.sheetDelta)}`
+    : result.promoApplied
     ? `促销最低价 ${fmt(result.promoFloor)} 已套用`
     : "按系统基础价 + extras 计算，含 GST 并已扣除补贴";
   $("quoteText").value = buildQuoteText(product, result);
@@ -756,10 +820,12 @@ function renderCompare(brand) {
     const solar = p.panels * 475 / 1000;
     const estimate = estimateBase(p);
     const promoLabel = estimate.promoApplied ? `<span class="promo-label">促销最低价</span>` : "";
+    const sheetLabel = p.sheetFinal ? `<span class="promo-label">Google Sheet价</span>` : "";
     const calculatedLabel = estimate.promoApplied ? `<span>系统计算价 ${fmt(estimate.base)}</span>` : "";
     return `<button class="compare-card${active}" type="button" data-index="${p.index}">
       <strong>${fmt(estimate.final)}</strong>
       ${promoLabel}
+      ${sheetLabel}
       <span>${p.inverter}</span>
       <span>${size.toFixed(1)} kWh battery / ${solar.toFixed(2)} kW solar</span>
       ${calculatedLabel}
@@ -783,7 +849,7 @@ function estimateBase(product) {
   const promoApplied = $("useFloor").checked && product.min > base;
   return {
     base,
-    final: promoApplied ? product.min : base,
+    final: product.sheetFinal || (promoApplied ? product.min : base),
     promoApplied
   };
 }
