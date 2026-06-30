@@ -318,14 +318,13 @@ async function loadPrivateSheetRows(sheetUrl) {
   if (!sheet) throw new Error("找不到这个 spreadsheet 里的工作表。");
 
   const range = `${quoteSheetTitle(sheet.properties.title)}!A:ZZ`;
-  const xFormulaRange = `${quoteSheetTitle(sheet.properties.title)}!X:X`;
   const values = await fetchGoogleJson(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?majorDimension=ROWS`);
-  const formulas = await fetchGoogleJson(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?ranges=${encodeURIComponent(xFormulaRange)}&includeGridData=true&fields=sheets(data(rowData(values(userEnteredValue))))`);
+  const formulas = await fetchGoogleJson(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?ranges=${encodeURIComponent(range)}&includeGridData=true&fields=sheets(data(rowData(values(userEnteredValue))))`);
   const formulaRows = formulas.sheets?.[0]?.data?.[0]?.rowData || [];
   return {
     title: sheet.properties.title,
     rows: values.values || [],
-    xFormulas: formulaRows.map((row) => row.values?.[0]?.userEnteredValue?.formulaValue || "")
+    formulas: formulaRows.map((row) => (row.values || []).map((cell) => cell.userEnteredValue?.formulaValue || ""))
   };
 }
 
@@ -392,7 +391,7 @@ function inferBatteryUnit(battery, size, qty) {
   return match ? Number(match[1]) : 0;
 }
 
-function csvRowsToProducts(rows, xFormulas = []) {
+function csvRowsToProducts(rows, formulas = []) {
   const headerIndex = rows.findIndex((row) => {
     const labels = row.map((cell) => cleanText(cell).toUpperCase());
     return labels.some((cell) => cell.includes("INVERTER MODEL")) && labels.some((cell) => cell.includes("BATTERY MODEL"));
@@ -509,6 +508,8 @@ function csvRowsToProducts(rows, xFormulas = []) {
     const sheetYellowFinal = money(row[sheetFinalIdx]);
     const sheetHiddenX = money(row[letterIndex("X")]);
     const sheetBase = sheetYellowFinal ? sheetYellowFinal - sheetTotals.extras : sheetHiddenX;
+    const formulaRow = formulas[rowIndex] || [];
+    const sheetFinalFormula = sheetFinalIdx >= 0 ? formulaRow[sheetFinalIdx] || "" : "";
 
     return {
       dynamic: true,
@@ -516,7 +517,8 @@ function csvRowsToProducts(rows, xFormulas = []) {
       sheetFinal: sheetBase ? sheetBase + sheetTotals.extras : 0,
       sheetYellowFinal,
       sheetHiddenX,
-      sheetXFormula: xFormulas[rowIndex] || "",
+      sheetXFormula: formulaRow[letterIndex("X")] || "",
+      sheetFinalFormula,
       sheetImportedExtras: sheetTotals.extras,
       extraDefaults: {
         splits: splits.qty,
@@ -581,7 +583,7 @@ async function loadSheetData() {
     const result = await loadPrivateSheetRows($("sheetUrl").value);
     rows = result.rows;
     sourceName = `Google 登录数据：${result.title}`;
-    products = csvRowsToProducts(rows, result.xFormulas);
+    products = csvRowsToProducts(rows, result.formulas);
     current = 0;
     renderBrands();
     $("brandSelect").value = products[0].brand;
@@ -618,7 +620,11 @@ function calculate(product) {
 
   if (product.dynamic) {
     const sheetBase = product.sheetBase || product.sheetHiddenX || 0;
-    const sheetFinal = sheetBase ? sheetBase + extras : 0;
+    const sheetFinal = product.sheetYellowFinal
+      ? product.sheetYellowFinal + extras - (product.sheetImportedExtras || 0)
+      : sheetBase
+      ? sheetBase + extras
+      : 0;
     const yellowCheck = product.sheetYellowFinal
       ? sheetBase + (product.sheetImportedExtras || 0) - product.sheetYellowFinal
       : 0;
@@ -639,6 +645,7 @@ function calculate(product) {
       sheetBase,
       sheetHiddenX: product.sheetHiddenX || 0,
       sheetXFormula: product.sheetXFormula || "",
+      sheetFinalFormula: product.sheetFinalFormula || "",
       sheetFinal,
       sheetYellowFinal: product.sheetYellowFinal || 0,
       sheetImportedExtras: product.sheetImportedExtras || 0,
@@ -679,6 +686,7 @@ function calculate(product) {
     sheetBase: product.sheetBase || 0,
     sheetHiddenX: product.sheetHiddenX || 0,
     sheetXFormula: product.sheetXFormula || "",
+    sheetFinalFormula: product.sheetFinalFormula || "",
     sheetFinal,
     sheetYellowFinal: product.sheetYellowFinal || 0,
     sheetImportedExtras: product.sheetImportedExtras || 0,
@@ -788,6 +796,7 @@ function update() {
   $("sheetImportedExtras").textContent = result.sheetYellowFinal ? fmt(result.sheetImportedExtras) : "未读取";
   $("sheetHiddenX").textContent = result.sheetHiddenX ? fmt(result.sheetHiddenX) : "未读取";
   $("sheetXFormula").textContent = result.sheetXFormula || "未读取";
+  $("sheetFinalFormula").textContent = result.sheetFinalFormula || "未读取";
   $("sheetBase").textContent = result.sheetBase ? fmt(result.sheetBase) : "未读取";
   $("sheetFinal").textContent = result.sheetFinal ? fmt(result.sheetFinal) : "未读取";
   $("sheetDelta").textContent = result.sheetFinal ? fmt(result.sheetDelta) : "未读取";
