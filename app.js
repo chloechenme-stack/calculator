@@ -268,32 +268,28 @@ function waitForGoogleIdentity() {
   });
 }
 
-async function signInWithGoogle() {
+async function requestGoogleAccessToken() {
   const clientId = window.DMG_CONFIG?.googleClientId?.trim() || "";
   if (!clientId) {
-    setSourceStatus("缺少 config.js 里的 Google OAuth Client ID。", "error");
-    return;
+    throw new Error("缺少 config.js 里的 Google OAuth Client ID。");
   }
 
-  setSourceStatus("正在打开 Google 登录...", "");
-  try {
-    await waitForGoogleIdentity();
+  await waitForGoogleIdentity();
+  return new Promise((resolve, reject) => {
     googleTokenClient = window.google.accounts.oauth2.initTokenClient({
       client_id: clientId,
       scope: "https://www.googleapis.com/auth/spreadsheets.readonly",
       callback: (response) => {
         if (response.error) {
-          setSourceStatus(`Google 登录失败：${response.error}`, "error");
+          reject(new Error(response.error));
           return;
         }
         googleAccessToken = response.access_token;
-        setSourceStatus("Google 已登录，可以读取你有权限的 Sheet。", "ok");
+        resolve(googleAccessToken);
       }
     });
     googleTokenClient.requestAccessToken({ prompt: "consent" });
-  } catch (error) {
-    setSourceStatus(`Google 登录失败：${error.message}`, "error");
-  }
+  });
 }
 
 async function fetchGoogleJson(url) {
@@ -526,23 +522,16 @@ function csvRowsToProducts(rows) {
 async function loadSheetData() {
   const button = $("loadSheetBtn");
   button.disabled = true;
-  setSourceStatus("正在读取 Google Sheet...", "");
+  setSourceStatus(googleAccessToken ? "正在读取 Google Sheet..." : "正在授权并读取 Google Sheet...", "");
   try {
     let rows;
-    let sourceName = "公开 CSV";
-    if (googleAccessToken) {
-      const result = await loadPrivateSheetRows($("sheetUrl").value);
-      rows = result.rows;
-      sourceName = `Google 登录数据：${result.title}`;
-    } else {
-      const csvUrl = toCsvUrl($("sheetUrl").value);
-      const response = await fetch(csvUrl);
-      const text = await response.text();
-      if (!response.ok || /ServiceLogin|accounts\.google\.com|Sign in/i.test(text)) {
-        throw new Error("这个 Sheet 需要登录。请先确认 config.js 已配置 OAuth Client ID，并点击 Google 登录。");
-      }
-      rows = parseCsv(text);
+    let sourceName = "Google 登录数据";
+    if (!googleAccessToken) {
+      await requestGoogleAccessToken();
     }
+    const result = await loadPrivateSheetRows($("sheetUrl").value);
+    rows = result.rows;
+    sourceName = `Google 登录数据：${result.title}`;
     products = csvRowsToProducts(rows);
     current = 0;
     renderBrands();
@@ -799,7 +788,6 @@ renderExtras();
 renderBrands();
 renderProducts();
 
-$("googleLoginBtn").addEventListener("click", signInWithGoogle);
 $("loadSheetBtn").addEventListener("click", loadSheetData);
 $("useBuiltInBtn").addEventListener("click", useBuiltInData);
 $("brandSelect").addEventListener("change", renderProducts);
