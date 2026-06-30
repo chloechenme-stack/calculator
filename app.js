@@ -318,10 +318,14 @@ async function loadPrivateSheetRows(sheetUrl) {
   if (!sheet) throw new Error("找不到这个 spreadsheet 里的工作表。");
 
   const range = `${quoteSheetTitle(sheet.properties.title)}!A:ZZ`;
+  const xFormulaRange = `${quoteSheetTitle(sheet.properties.title)}!X:X`;
   const values = await fetchGoogleJson(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?majorDimension=ROWS`);
+  const formulas = await fetchGoogleJson(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?ranges=${encodeURIComponent(xFormulaRange)}&includeGridData=true&fields=sheets(data(rowData(values(userEnteredValue))))`);
+  const formulaRows = formulas.sheets?.[0]?.data?.[0]?.rowData || [];
   return {
     title: sheet.properties.title,
-    rows: values.values || []
+    rows: values.values || [],
+    xFormulas: formulaRows.map((row) => row.values?.[0]?.userEnteredValue?.formulaValue || "")
   };
 }
 
@@ -388,7 +392,7 @@ function inferBatteryUnit(battery, size, qty) {
   return match ? Number(match[1]) : 0;
 }
 
-function csvRowsToProducts(rows) {
+function csvRowsToProducts(rows, xFormulas = []) {
   const headerIndex = rows.findIndex((row) => {
     const labels = row.map((cell) => cleanText(cell).toUpperCase());
     return labels.some((cell) => cell.includes("INVERTER MODEL")) && labels.some((cell) => cell.includes("BATTERY MODEL"));
@@ -469,7 +473,8 @@ function csvRowsToProducts(rows) {
   };
 
   let sectionBrand = "";
-  const parsed = rows.slice(headerIndex + 1).map((row) => {
+  const parsed = rows.slice(headerIndex + 1).map((row, rowOffset) => {
+    const rowIndex = headerIndex + 1 + rowOffset;
     const wholesaler = cleanText(row[wholesalerIdx >= 0 ? wholesalerIdx : 0]);
     const inverter = cleanText(row[inverterIdx >= 0 ? inverterIdx : 1]);
     const battery = cleanText(row[batteryModelIdx >= 0 ? batteryModelIdx : 4]);
@@ -511,6 +516,7 @@ function csvRowsToProducts(rows) {
       sheetFinal: sheetBase ? sheetBase + sheetTotals.extras : 0,
       sheetYellowFinal,
       sheetHiddenX,
+      sheetXFormula: xFormulas[rowIndex] || "",
       sheetImportedExtras: sheetTotals.extras,
       extraDefaults: {
         splits: splits.qty,
@@ -575,7 +581,7 @@ async function loadSheetData() {
     const result = await loadPrivateSheetRows($("sheetUrl").value);
     rows = result.rows;
     sourceName = `Google 登录数据：${result.title}`;
-    products = csvRowsToProducts(rows);
+    products = csvRowsToProducts(rows, result.xFormulas);
     current = 0;
     renderBrands();
     $("brandSelect").value = products[0].brand;
@@ -632,6 +638,7 @@ function calculate(product) {
       formulaFinal: sheetFinal,
       sheetBase,
       sheetHiddenX: product.sheetHiddenX || 0,
+      sheetXFormula: product.sheetXFormula || "",
       sheetFinal,
       sheetYellowFinal: product.sheetYellowFinal || 0,
       sheetImportedExtras: product.sheetImportedExtras || 0,
@@ -671,6 +678,7 @@ function calculate(product) {
     formulaFinal,
     sheetBase: product.sheetBase || 0,
     sheetHiddenX: product.sheetHiddenX || 0,
+    sheetXFormula: product.sheetXFormula || "",
     sheetFinal,
     sheetYellowFinal: product.sheetYellowFinal || 0,
     sheetImportedExtras: product.sheetImportedExtras || 0,
@@ -779,6 +787,7 @@ function update() {
   $("sheetYellowFinal").textContent = result.sheetYellowFinal ? fmt(result.sheetYellowFinal) : "未读取";
   $("sheetImportedExtras").textContent = result.sheetYellowFinal ? fmt(result.sheetImportedExtras) : "未读取";
   $("sheetHiddenX").textContent = result.sheetHiddenX ? fmt(result.sheetHiddenX) : "未读取";
+  $("sheetXFormula").textContent = result.sheetXFormula || "未读取";
   $("sheetBase").textContent = result.sheetBase ? fmt(result.sheetBase) : "未读取";
   $("sheetFinal").textContent = result.sheetFinal ? fmt(result.sheetFinal) : "未读取";
   $("sheetDelta").textContent = result.sheetFinal ? fmt(result.sheetDelta) : "未读取";

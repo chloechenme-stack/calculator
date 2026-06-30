@@ -352,6 +352,13 @@ dd {
   font-weight: 900;
 }
 
+.formula-value {
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .compare-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
