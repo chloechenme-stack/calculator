@@ -549,14 +549,6 @@ async function loadSheetData() {
   }
 }
 
-function useBuiltInData() {
-  products = [...defaultProducts];
-  current = 0;
-  renderBrands();
-  renderProducts();
-  setSourceStatus("当前使用内置数据", "");
-}
-
 function batteryStcs(kwh, factor) {
   const weighted = Math.min(kwh, 14) + Math.max(Math.min(kwh, 28) - 14, 0) * 0.6 + Math.max(Math.min(kwh, 50) - 28, 0) * 0.15;
   return Math.floor(weighted * factor);
@@ -789,7 +781,6 @@ renderBrands();
 renderProducts();
 
 $("loadSheetBtn").addEventListener("click", loadSheetData);
-$("useBuiltInBtn").addEventListener("click", useBuiltInData);
 $("brandSelect").addEventListener("change", renderProducts);
 $("productSelect").addEventListener("change", loadProduct);
 ["batteryQty", "panelQty", "stcPrice", "stcFactor", "dcCoupled", "useFloor"].forEach((id) => $(id).addEventListener("input", update));
