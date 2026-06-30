@@ -415,7 +415,6 @@ function csvRowsToProducts(rows) {
     return letters.split("").reduce((total, letter) => total * 26 + letter.charCodeAt(0) - 64, 0) - 1;
   };
   const masterSalesTotals = (row) => {
-    const base = money(row[letterIndex("X")]);
     const pairs = [
       ["Y", "Z"],
       ["AA", "AB"],
@@ -436,9 +435,8 @@ function csvRowsToProducts(rows) {
     }, 0);
 
     return {
-      base,
       extras: extrasTotal,
-      final: base || extrasTotal ? base + extrasTotal : 0
+      final: extrasTotal
     };
   };
   const get = (row, fallbackIndex, ...names) => {
@@ -504,14 +502,12 @@ function csvRowsToProducts(rows) {
     const enclosure = enclosure12.qty ? enclosure12 : enclosure8;
     const sheetTotals = masterSalesTotals(row);
     const sheetYellowFinal = money(row[sheetFinalIdx]);
-    const sheetBase = sheetYellowFinal
-      ? sheetYellowFinal - sheetTotals.extras
-      : sheetTotals.base;
+    const sheetBase = sheetYellowFinal ? sheetYellowFinal - sheetTotals.extras : 0;
 
     return {
       dynamic: true,
       sheetBase,
-      sheetFinal: sheetBase ? sheetBase + sheetTotals.extras : sheetYellowFinal || sheetTotals.final,
+      sheetFinal: sheetBase ? sheetBase + sheetTotals.extras : 0,
       sheetYellowFinal,
       sheetImportedExtras: sheetTotals.extras,
       extraDefaults: {
@@ -641,6 +637,8 @@ function calculate(product) {
     formulaFinal,
     sheetBase: product.sheetBase || 0,
     sheetFinal,
+    sheetYellowFinal: product.sheetYellowFinal || 0,
+    sheetImportedExtras: product.sheetImportedExtras || 0,
     sheetDelta: sheetFinal ? sheetFinal - formulaFinal : 0,
     promoFloor,
     promoApplied: $("useFloor").checked && promoFloor > beforeFloor
@@ -742,6 +740,8 @@ function update() {
   $("totalRebates").textContent = `-${fmt(result.totalRebates)}`;
   $("baseSell").textContent = fmt(result.baseSell);
   $("promoFloor").textContent = result.promoApplied ? `${fmt(result.promoFloor)} 已套用` : fmt(result.promoFloor);
+  $("sheetYellowFinal").textContent = result.sheetYellowFinal ? fmt(result.sheetYellowFinal) : "未读取";
+  $("sheetImportedExtras").textContent = result.sheetYellowFinal ? fmt(result.sheetImportedExtras) : "未读取";
   $("sheetBase").textContent = result.sheetBase ? fmt(result.sheetBase) : "未读取";
   $("sheetFinal").textContent = result.sheetFinal ? fmt(result.sheetFinal) : "未读取";
   $("sheetDelta").textContent = result.sheetFinal ? fmt(result.sheetDelta) : "未读取";
