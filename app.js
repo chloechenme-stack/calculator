@@ -411,6 +411,32 @@ function csvRowsToProducts(rows) {
     }
     return -1;
   };
+  const letterIndex = (letters) => {
+    return letters.split("").reduce((total, letter) => total * 26 + letter.charCodeAt(0) - 64, 0) - 1;
+  };
+  const masterSalesFinal = (row) => {
+    const base = money(row[letterIndex("X")]);
+    const pairs = [
+      ["Y", "Z"],
+      ["AA", "AB"],
+      ["AC", "AD"],
+      ["AE", "AF"],
+      ["AG", "AH"],
+      ["AI", "AJ"],
+      ["AK", "AL"],
+      ["AM", "AN"],
+      ["AO", "AP"],
+      ["AQ", "AR"],
+      ["AS", "AT"],
+      ["AU", "AV"]
+    ];
+
+    const extrasTotal = pairs.reduce((total, [priceCol, qtyCol]) => {
+      return total + money(row[letterIndex(priceCol)]) * money(row[letterIndex(qtyCol)]);
+    }, 0);
+
+    return base || extrasTotal ? base + extrasTotal : 0;
+  };
   const get = (row, fallbackIndex, ...names) => {
     const index = col(...names);
     return row[index >= 0 ? index : fallbackIndex];
@@ -472,10 +498,11 @@ function csvRowsToProducts(rows) {
     const enclosure8 = extraPair(row, "enclosure", "EXTERNAL ENCLOSURE BOX 8");
     const enclosure12 = extraPair(row, "enclosure", "EXTERNAL ENCLOSURE BOX 12");
     const enclosure = enclosure12.qty ? enclosure12 : enclosure8;
+    const sheetFormulaFinal = masterSalesFinal(row);
 
     return {
       dynamic: true,
-      sheetFinal: money(row[sheetFinalIdx]),
+      sheetFinal: sheetFormulaFinal || money(row[sheetFinalIdx]),
       extraDefaults: {
         splits: splits.qty,
         optimizer: optimizer.qty,
