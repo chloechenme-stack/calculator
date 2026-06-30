@@ -414,7 +414,7 @@ function csvRowsToProducts(rows) {
   const letterIndex = (letters) => {
     return letters.split("").reduce((total, letter) => total * 26 + letter.charCodeAt(0) - 64, 0) - 1;
   };
-  const masterSalesFinal = (row) => {
+  const masterSalesTotals = (row) => {
     const base = money(row[letterIndex("X")]);
     const pairs = [
       ["Y", "Z"],
@@ -435,7 +435,11 @@ function csvRowsToProducts(rows) {
       return total + money(row[letterIndex(priceCol)]) * money(row[letterIndex(qtyCol)]);
     }, 0);
 
-    return base || extrasTotal ? base + extrasTotal : 0;
+    return {
+      base,
+      extras: extrasTotal,
+      final: base || extrasTotal ? base + extrasTotal : 0
+    };
   };
   const get = (row, fallbackIndex, ...names) => {
     const index = col(...names);
@@ -498,11 +502,18 @@ function csvRowsToProducts(rows) {
     const enclosure8 = extraPair(row, "enclosure", "EXTERNAL ENCLOSURE BOX 8");
     const enclosure12 = extraPair(row, "enclosure", "EXTERNAL ENCLOSURE BOX 12");
     const enclosure = enclosure12.qty ? enclosure12 : enclosure8;
-    const sheetFormulaFinal = masterSalesFinal(row);
+    const sheetTotals = masterSalesTotals(row);
+    const sheetYellowFinal = money(row[sheetFinalIdx]);
+    const sheetBase = sheetYellowFinal
+      ? sheetYellowFinal - sheetTotals.extras
+      : sheetTotals.base;
 
     return {
       dynamic: true,
-      sheetFinal: sheetFormulaFinal || money(row[sheetFinalIdx]),
+      sheetBase,
+      sheetFinal: sheetBase ? sheetBase + sheetTotals.extras : sheetYellowFinal || sheetTotals.final,
+      sheetYellowFinal,
+      sheetImportedExtras: sheetTotals.extras,
       extraDefaults: {
         splits: splits.qty,
         optimizer: optimizer.qty,
@@ -571,10 +582,10 @@ async function loadSheetData() {
     renderBrands();
     $("brandSelect").value = products[0].brand;
     renderProducts();
-    const sheetFinalCount = products.filter((product) => product.sheetFinal).length;
+    const sheetFinalCount = products.filter((product) => product.sheetBase || product.sheetFinal).length;
     const sheetFinalStatus = sheetFinalCount
-      ? `，其中 ${sheetFinalCount} 个读取到黄列价`
-      : "，但没有匹配到黄列价";
+      ? `，其中 ${sheetFinalCount} 个推算到 X 列`
+      : "，但没有推算到 X 列";
     setSourceStatus(`已从 ${sourceName} 加载 ${products.length} 个产品配置${sheetFinalStatus}`, sheetFinalCount ? "ok" : "error");
   } catch (error) {
     products = [...defaultProducts];
@@ -612,7 +623,7 @@ function calculate(product) {
   const beforeFloor = baseSell + extras;
   const promoFloor = product.min || 0;
   const formulaFinal = $("useFloor").checked ? Math.max(promoFloor, beforeFloor) : beforeFloor;
-  const sheetFinal = product.sheetFinal || 0;
+  const sheetFinal = product.sheetBase ? product.sheetBase + extras : product.sheetFinal || 0;
   const final = sheetFinal || formulaFinal;
   return {
     batterySize,
@@ -628,6 +639,7 @@ function calculate(product) {
     extras,
     final,
     formulaFinal,
+    sheetBase: product.sheetBase || 0,
     sheetFinal,
     sheetDelta: sheetFinal ? sheetFinal - formulaFinal : 0,
     promoFloor,
@@ -730,10 +742,11 @@ function update() {
   $("totalRebates").textContent = `-${fmt(result.totalRebates)}`;
   $("baseSell").textContent = fmt(result.baseSell);
   $("promoFloor").textContent = result.promoApplied ? `${fmt(result.promoFloor)} 已套用` : fmt(result.promoFloor);
+  $("sheetBase").textContent = result.sheetBase ? fmt(result.sheetBase) : "未读取";
   $("sheetFinal").textContent = result.sheetFinal ? fmt(result.sheetFinal) : "未读取";
   $("sheetDelta").textContent = result.sheetFinal ? fmt(result.sheetDelta) : "未读取";
   $("priceNote").textContent = result.sheetFinal
-    ? `按 Google Sheet 黄列价显示，软件重算差异 ${fmt(result.sheetDelta)}`
+    ? `按推算 X 列 + 当前 extras 计算，软件重算差异 ${fmt(result.sheetDelta)}`
     : result.promoApplied
     ? `促销最低价 ${fmt(result.promoFloor)} 已套用`
     : "按系统基础价 + extras 计算，含 GST 并已扣除补贴";
