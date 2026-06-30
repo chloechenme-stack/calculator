@@ -269,11 +269,12 @@ function waitForGoogleIdentity() {
 }
 
 async function requestGoogleAccessToken() {
-  const clientId = window.DMG_CONFIG?.googleClientId?.trim() || "";
+  const clientId = $("googleClientId").value.trim();
   if (!clientId) {
-    throw new Error("缺少 config.js 里的 Google OAuth Client ID。");
+    throw new Error("请先填写 Google OAuth Client ID。");
   }
 
+  localStorage.setItem("googleClientId", clientId);
   await waitForGoogleIdentity();
   return new Promise((resolve, reject) => {
     googleTokenClient = window.google.accounts.oauth2.initTokenClient({
@@ -777,6 +778,7 @@ function estimateBase(product) {
 }
 
 renderExtras();
+$("googleClientId").value = localStorage.getItem("googleClientId") || "";
 renderBrands();
 renderProducts();
 
