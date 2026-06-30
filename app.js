@@ -608,6 +608,39 @@ function calculate(product) {
   const stcFactor = num($("stcFactor").value);
   const batterySize = batQty * product.batUnit;
   const solarSize = panelQty * 475 / 1000;
+  const extras = extraDefs.reduce((sum, [key]) => sum + num($(key + "Qty").value) * num($(key + "Price").value), 0);
+
+  if (product.dynamic) {
+    const sheetBase = product.sheetBase || product.sheetHiddenX || 0;
+    const sheetFinal = sheetBase ? sheetBase + extras : 0;
+    const yellowCheck = product.sheetYellowFinal
+      ? sheetBase + (product.sheetImportedExtras || 0) - product.sheetYellowFinal
+      : 0;
+    return {
+      batterySize,
+      solarSize,
+      batteryCredit: null,
+      solarCredit: null,
+      waRebate: null,
+      productTotal: null,
+      gstComm: null,
+      install: null,
+      totalRebates: null,
+      baseSell: sheetBase,
+      extras,
+      final: sheetFinal,
+      formulaFinal: sheetFinal,
+      sheetBase,
+      sheetHiddenX: product.sheetHiddenX || 0,
+      sheetFinal,
+      sheetYellowFinal: product.sheetYellowFinal || 0,
+      sheetImportedExtras: product.sheetImportedExtras || 0,
+      sheetDelta: yellowCheck,
+      promoFloor: 0,
+      promoApplied: false
+    };
+  }
+
   const batteryCredit = batteryStcs(batterySize, stcFactor) * stcPrice;
   const solarCredit = solarSize * stcFactor * stcPrice;
   const waRebate = $("dcCoupled").checked && !product.acCoupled ? 1300 : 0;
@@ -617,7 +650,6 @@ function calculate(product) {
   const install = 2000 + 300 * solarSize + 30 * batterySize;
   const totalRebates = batteryCredit + solarCredit + waRebate;
   const baseSell = gstComm + install - totalRebates;
-  const extras = extraDefs.reduce((sum, [key]) => sum + num($(key + "Qty").value) * num($(key + "Price").value), 0);
   const beforeFloor = baseSell + extras;
   const promoFloor = product.min || 0;
   const formulaFinal = $("useFloor").checked ? Math.max(promoFloor, beforeFloor) : beforeFloor;
@@ -726,6 +758,7 @@ function loadProduct() {
 function update() {
   const product = products[current];
   const result = calculate(product);
+  const detailValue = (value) => value === null ? "不使用" : fmt(value);
   $("wholesaler").textContent = product.wholesaler;
   $("quoteTitle").textContent = product.inverter;
   $("batteryName").textContent = product.battery;
@@ -734,13 +767,13 @@ function update() {
   $("solarSize").textContent = `${result.solarSize.toFixed(2)} kW`;
   $("perKwh").textContent = result.batterySize ? fmt(result.final / result.batterySize) : "$0";
   $("extrasTotal").textContent = fmt(result.extras);
-  $("productTotal").textContent = fmt(result.productTotal);
-  $("gstComm").textContent = fmt(result.gstComm);
-  $("install").textContent = fmt(result.install);
-  $("solarRebate").textContent = `-${fmt(result.solarCredit)}`;
-  $("batteryRebate").textContent = `-${fmt(result.batteryCredit)}`;
-  $("waRebate").textContent = `-${fmt(result.waRebate)}`;
-  $("totalRebates").textContent = `-${fmt(result.totalRebates)}`;
+  $("productTotal").textContent = detailValue(result.productTotal);
+  $("gstComm").textContent = detailValue(result.gstComm);
+  $("install").textContent = detailValue(result.install);
+  $("solarRebate").textContent = result.solarCredit === null ? "不使用" : `-${fmt(result.solarCredit)}`;
+  $("batteryRebate").textContent = result.batteryCredit === null ? "不使用" : `-${fmt(result.batteryCredit)}`;
+  $("waRebate").textContent = result.waRebate === null ? "不使用" : `-${fmt(result.waRebate)}`;
+  $("totalRebates").textContent = result.totalRebates === null ? "不使用" : `-${fmt(result.totalRebates)}`;
   $("baseSell").textContent = fmt(result.baseSell);
   $("promoFloor").textContent = result.promoApplied ? `${fmt(result.promoFloor)} 已套用` : fmt(result.promoFloor);
   $("sheetYellowFinal").textContent = result.sheetYellowFinal ? fmt(result.sheetYellowFinal) : "未读取";
@@ -750,7 +783,7 @@ function update() {
   $("sheetFinal").textContent = result.sheetFinal ? fmt(result.sheetFinal) : "未读取";
   $("sheetDelta").textContent = result.sheetFinal ? fmt(result.sheetDelta) : "未读取";
   $("priceNote").textContent = result.sheetFinal
-    ? `按推算 X 列 + 当前 extras 计算，软件重算差异 ${fmt(result.sheetDelta)}`
+    ? `按 X 基础价 + 当前 extras 计算，黄标核对差异 ${fmt(result.sheetDelta)}`
     : result.promoApplied
     ? `促销最低价 ${fmt(result.promoFloor)} 已套用`
     : "按系统基础价 + extras 计算，含 GST 并已扣除补贴";
