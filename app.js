@@ -502,13 +502,15 @@ function csvRowsToProducts(rows) {
     const enclosure = enclosure12.qty ? enclosure12 : enclosure8;
     const sheetTotals = masterSalesTotals(row);
     const sheetYellowFinal = money(row[sheetFinalIdx]);
-    const sheetBase = sheetYellowFinal ? sheetYellowFinal - sheetTotals.extras : 0;
+    const sheetHiddenX = money(row[letterIndex("X")]);
+    const sheetBase = sheetYellowFinal ? sheetYellowFinal - sheetTotals.extras : sheetHiddenX;
 
     return {
       dynamic: true,
       sheetBase,
       sheetFinal: sheetBase ? sheetBase + sheetTotals.extras : 0,
       sheetYellowFinal,
+      sheetHiddenX,
       sheetImportedExtras: sheetTotals.extras,
       extraDefaults: {
         splits: splits.qty,
@@ -636,6 +638,7 @@ function calculate(product) {
     final,
     formulaFinal,
     sheetBase: product.sheetBase || 0,
+    sheetHiddenX: product.sheetHiddenX || 0,
     sheetFinal,
     sheetYellowFinal: product.sheetYellowFinal || 0,
     sheetImportedExtras: product.sheetImportedExtras || 0,
@@ -742,6 +745,7 @@ function update() {
   $("promoFloor").textContent = result.promoApplied ? `${fmt(result.promoFloor)} 已套用` : fmt(result.promoFloor);
   $("sheetYellowFinal").textContent = result.sheetYellowFinal ? fmt(result.sheetYellowFinal) : "未读取";
   $("sheetImportedExtras").textContent = result.sheetYellowFinal ? fmt(result.sheetImportedExtras) : "未读取";
+  $("sheetHiddenX").textContent = result.sheetHiddenX ? fmt(result.sheetHiddenX) : "未读取";
   $("sheetBase").textContent = result.sheetBase ? fmt(result.sheetBase) : "未读取";
   $("sheetFinal").textContent = result.sheetFinal ? fmt(result.sheetFinal) : "未读取";
   $("sheetDelta").textContent = result.sheetFinal ? fmt(result.sheetDelta) : "未读取";
