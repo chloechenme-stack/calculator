@@ -317,7 +317,7 @@ async function loadPrivateSheetRows(sheetUrl) {
   const sheet = meta.sheets?.find((item) => Number(item.properties.sheetId) === gid) || meta.sheets?.[0];
   if (!sheet) throw new Error("找不到这个 spreadsheet 里的工作表。");
 
-  const range = `${quoteSheetTitle(sheet.properties.title)}!A:AR`;
+  const range = `${quoteSheetTitle(sheet.properties.title)}!A:ZZ`;
   const values = await fetchGoogleJson(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?majorDimension=ROWS`);
   return {
     title: sheet.properties.title,
@@ -400,6 +400,10 @@ function csvRowsToProducts(rows) {
     const wanted = names.map((name) => name.toUpperCase());
     return headers.findIndex((header) => wanted.some((name) => header === name || header.includes(name)));
   };
+  const colWithWords = (...words) => {
+    const wanted = words.map((word) => word.toUpperCase());
+    return headers.findIndex((header) => wanted.every((word) => header.includes(word)));
+  };
   const findQtyAfter = (startIndex) => {
     if (startIndex < 0) return -1;
     for (let index = startIndex + 1; index < Math.min(headers.length, startIndex + 5); index += 1) {
@@ -424,7 +428,9 @@ function csvRowsToProducts(rows) {
   const panelQtyIdx = col("SOLAR PANELS", "PANEL QUANTITY");
   const productTotalIdx = col("PRODUCT TOTAL");
   const gstCommIdx = col("GST +COMM", "GST");
-  const sheetFinalIdx = col("SELL PRICE WITH EXTRAS");
+  const sheetFinalIdx = col("SELL PRICE WITH EXTRAS") >= 0
+    ? col("SELL PRICE WITH EXTRAS")
+    : colWithWords("SELL", "PRICE", "EXTRA");
   const extraPair = (row, key, ...names) => {
     const priceIdx = col(...names);
     const qtyIdx = findQtyAfter(priceIdx);
@@ -538,7 +544,11 @@ async function loadSheetData() {
     renderBrands();
     $("brandSelect").value = products[0].brand;
     renderProducts();
-    setSourceStatus(`已从 ${sourceName} 加载 ${products.length} 个产品配置`, "ok");
+    const sheetFinalCount = products.filter((product) => product.sheetFinal).length;
+    const sheetFinalStatus = sheetFinalCount
+      ? `，其中 ${sheetFinalCount} 个读取到黄列价`
+      : "，但没有匹配到黄列价";
+    setSourceStatus(`已从 ${sourceName} 加载 ${products.length} 个产品配置${sheetFinalStatus}`, sheetFinalCount ? "ok" : "error");
   } catch (error) {
     products = [...defaultProducts];
     current = 0;
