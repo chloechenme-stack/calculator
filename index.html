@@ -17,10 +17,6 @@
 
           <div class="source-panel">
             <label class="field">
-              <span>Google OAuth Client ID</span>
-              <input id="googleClientId" type="text" value="213305086648-r04568e1p1ms9bfiqfiadl741q7hu3pv.apps.googleusercontent.com">
-            </label>
-            <label class="field">
               <span>Google Sheet 数据源</span>
               <input id="sheetUrl" type="url" value="https://docs.google.com/spreadsheets/d/1mDvDIHcHQgH8_BkguTExC2pBUKJeaBYft3yROmVHu34/edit?gid=959073985#gid=959073985">
             </label>
@@ -28,10 +24,8 @@
               <button id="googleLoginBtn" type="button">Google 登录</button>
               <button id="loadSheetBtn" type="button">加载 Google Sheet</button>
               <button id="useBuiltInBtn" type="button">使用内置数据</button>
-              <button id="copySchemaBtn" type="button">复制表结构</button>
             </div>
             <p id="sourceStatus" class="source-status">当前使用内置数据</p>
-            <textarea id="schemaDebug" class="schema-debug" rows="8" readonly hidden></textarea>
           </div>
 
           <label class="field">
@@ -140,6 +134,7 @@
       </section>
     </main>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="config.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

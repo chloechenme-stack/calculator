@@ -226,8 +226,6 @@ const num = (value) => Number.parseFloat(value) || 0;
 let current = 0;
 let googleAccessToken = "";
 let googleTokenClient = null;
-let lastSheetRows = [];
-let lastSheetTitle = "";
 
 function setSourceStatus(message, type = "") {
   $("sourceStatus").textContent = message;
@@ -271,13 +269,12 @@ function waitForGoogleIdentity() {
 }
 
 async function signInWithGoogle() {
-  const clientId = $("googleClientId").value.trim();
+  const clientId = window.DMG_CONFIG?.googleClientId?.trim() || "";
   if (!clientId) {
-    setSourceStatus("请先填写 Google OAuth Client ID。", "error");
+    setSourceStatus("缺少 config.js 里的 Google OAuth Client ID。", "error");
     return;
   }
 
-  localStorage.setItem("googleClientId", clientId);
   setSourceStatus("正在打开 Google 登录...", "");
   try {
     await waitForGoogleIdentity();
@@ -526,57 +523,6 @@ function csvRowsToProducts(rows) {
   return parsed;
 }
 
-function buildSheetDebugText() {
-  if (!lastSheetRows.length) {
-    return "还没有加载 Google Sheet。请先点击“加载 Google Sheet”。";
-  }
-
-  const headerIndex = lastSheetRows.findIndex((row) => {
-    const labels = row.map((cell) => cleanText(cell).toUpperCase());
-    return labels.some((cell) => cell.includes("INVERTER MODEL")) && labels.some((cell) => cell.includes("BATTERY MODEL"));
-  });
-  const header = headerIndex >= 0 ? lastSheetRows[headerIndex] : lastSheetRows[0];
-  const productRows = headerIndex >= 0
-    ? lastSheetRows.slice(headerIndex + 1).filter((row) => row.some((cell) => cleanText(cell))).slice(0, 5)
-    : lastSheetRows.slice(1, 6);
-  const columnLines = header.map((cell, index) => `${index + 1}. ${cell || "(blank)"}`).join("\n");
-  const sampleLines = productRows.map((row, rowIndex) => {
-    const cells = header.map((name, index) => `${name || `Column ${index + 1}`}: ${row[index] || ""}`).join(" | ");
-    return `Row sample ${rowIndex + 1}: ${cells}`;
-  }).join("\n\n");
-
-  return [
-    `Sheet title: ${lastSheetTitle || "(unknown)"}`,
-    `Total rows loaded: ${lastSheetRows.length}`,
-    `Header row: ${headerIndex >= 0 ? headerIndex + 1 : "not found, using row 1"}`,
-    "",
-    "Columns:",
-    columnLines,
-    "",
-    "First product/sample rows:",
-    sampleLines || "(none)",
-    "",
-    "Parsed products preview:",
-    JSON.stringify(products.slice(0, 5), null, 2)
-  ].join("\n");
-}
-
-async function copySheetSchema() {
-  const text = buildSheetDebugText();
-  const output = $("schemaDebug");
-  output.hidden = false;
-  output.value = text;
-  output.focus();
-  output.select();
-
-  try {
-    await navigator.clipboard.writeText(text);
-    setSourceStatus("表结构已复制。把它粘贴给我，我就能精确修正价格映射。", "ok");
-  } catch {
-    setSourceStatus("浏览器没有允许自动复制。下面文本框已选中，请按 Cmd+C 手动复制。", "error");
-  }
-}
-
 async function loadSheetData() {
   const button = $("loadSheetBtn");
   button.disabled = true;
@@ -588,18 +534,15 @@ async function loadSheetData() {
       const result = await loadPrivateSheetRows($("sheetUrl").value);
       rows = result.rows;
       sourceName = `Google 登录数据：${result.title}`;
-      lastSheetTitle = result.title;
     } else {
       const csvUrl = toCsvUrl($("sheetUrl").value);
       const response = await fetch(csvUrl);
       const text = await response.text();
       if (!response.ok || /ServiceLogin|accounts\.google\.com|Sign in/i.test(text)) {
-        throw new Error("这个 Sheet 需要登录。请先填写 OAuth Client ID 并点击 Google 登录。");
+        throw new Error("这个 Sheet 需要登录。请先确认 config.js 已配置 OAuth Client ID，并点击 Google 登录。");
       }
       rows = parseCsv(text);
-      lastSheetTitle = "公开 CSV";
     }
-    lastSheetRows = rows;
     products = csvRowsToProducts(rows);
     current = 0;
     renderBrands();
@@ -619,8 +562,6 @@ async function loadSheetData() {
 
 function useBuiltInData() {
   products = [...defaultProducts];
-  lastSheetRows = [];
-  lastSheetTitle = "";
   current = 0;
   renderBrands();
   renderProducts();
@@ -855,14 +796,12 @@ function estimateBase(product) {
 }
 
 renderExtras();
-$("googleClientId").value = localStorage.getItem("googleClientId") || "";
 renderBrands();
 renderProducts();
 
 $("googleLoginBtn").addEventListener("click", signInWithGoogle);
 $("loadSheetBtn").addEventListener("click", loadSheetData);
 $("useBuiltInBtn").addEventListener("click", useBuiltInData);
-$("copySchemaBtn").addEventListener("click", copySheetSchema);
 $("brandSelect").addEventListener("change", renderProducts);
 $("productSelect").addEventListener("change", loadProduct);
 ["batteryQty", "panelQty", "stcPrice", "stcFactor", "dcCoupled", "useFloor"].forEach((id) => $(id).addEventListener("input", update));
