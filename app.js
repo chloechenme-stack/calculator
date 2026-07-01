@@ -42,6 +42,7 @@ const LEON_SHEET_PROFILE = {
 const WA_BATTERY_REBATE = 1300;
 const DEFAULT_STC_PRICE = 38;
 const DEFAULT_STC_FACTOR = 6.8;
+const USE_PROMO_FLOOR = true;
 
 let activeSheetContext = null;
 let sheetSyncTimer = null;
@@ -873,7 +874,7 @@ function calculate(product) {
   const baseSell = gstComm + install - totalRebates;
   const beforeFloor = baseSell + extras;
   const promoFloor = product.min || 0;
-  const formulaFinal = $("useFloor").checked ? Math.max(promoFloor, beforeFloor) : beforeFloor;
+  const formulaFinal = USE_PROMO_FLOOR ? Math.max(promoFloor, beforeFloor) : beforeFloor;
   const sheetFinal = product.sheetCalculationPending ? 0 : product.sheetBase ? product.sheetBase + extras : product.sheetFinal || 0;
   const final = sheetFinal || formulaFinal;
   return {
@@ -899,7 +900,7 @@ function calculate(product) {
     sheetImportedExtras: product.sheetImportedExtras || 0,
     sheetDelta: sheetFinal ? sheetFinal - formulaFinal : 0,
     promoFloor,
-    promoApplied: $("useFloor").checked && promoFloor > beforeFloor
+    promoApplied: USE_PROMO_FLOOR && promoFloor > beforeFloor
   };
 }
 
@@ -1222,7 +1223,7 @@ function estimateBase(product) {
   const solarCredit = solarSize * DEFAULT_STC_FACTOR * DEFAULT_STC_PRICE;
   const productTotal = product.inv * product.invQty + product.bat * product.batQty + product.panelPrice * product.panels + 67 * product.panels * 1.4;
   const base = productTotal * product.margin + 2000 + 300 * solarSize + 30 * batterySize - batteryCredit - solarCredit - (product.acCoupled ? 0 : WA_BATTERY_REBATE);
-  const promoApplied = $("useFloor").checked && product.min > base;
+  const promoApplied = USE_PROMO_FLOOR && product.min > base;
   return {
     base,
     final: product.sheetFinal || (promoApplied ? product.min : base),
@@ -1239,7 +1240,7 @@ $("loadSheetBtn").addEventListener("click", loadSheetData);
 $("brandSelect").addEventListener("change", renderProducts);
 $("productSelect").addEventListener("change", loadProduct);
 ["batteryQty", "panelQty"].forEach((id) => $(id).addEventListener("input", update));
-["dcCoupled", "useFloor"].forEach((id) => $(id).addEventListener("change", update));
+$("dcCoupled").addEventListener("change", update);
 $("resetExtras").addEventListener("click", () => setExtraDefaults(products[current]) || update());
 $("printBtn").addEventListener("click", () => window.print());
 $("copyQuoteBtn").addEventListener("click", async () => {
