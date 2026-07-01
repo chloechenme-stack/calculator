@@ -1198,11 +1198,7 @@ function buildQuoteText(product, result) {
       `- Total price inc. GST: ${fmt(result.final)}`
     ];
 
-  return `Hi,
-
-Please see the quote details below:
-
-System:
+  return `System:
 - ${result.solarSize.toFixed(2)}kW PV + ${product.inverter}
 - Battery: ${product.battery} (${result.batterySize.toFixed(1)}kWh)
 - Wholesaler: ${product.wholesaler}
