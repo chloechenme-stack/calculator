@@ -1082,9 +1082,74 @@ function update(options = {}) {
   }
 }
 
+const dimensionProfiles = {
+  Sigenergy: {
+    name: "SigEnergy SigenStor",
+    type: "All-in-One, Single Stack",
+    width: 850,
+    depth: 260,
+    options: [
+      { kwh: 18, height: 910 },
+      { kwh: 27, height: 1180 },
+      { kwh: 36, height: 1450 }
+    ]
+  },
+  GoodWe: {
+    name: "GoodWe ESA",
+    type: "All-in-One, Single Stack",
+    width: 800,
+    depth: 270,
+    options: [
+      { kwh: 16, height: 966 },
+      { kwh: 24, height: 1259 },
+      { kwh: 32, height: 1552 }
+    ]
+  },
+  FoxESS: {
+    name: "FoxESS CQ7",
+    type: "Split, Single Stack",
+    width: 660,
+    depth: 360,
+    options: [
+      { kwh: 28, height: 730 },
+      { kwh: 42, height: 1040 }
+    ]
+  },
+  Growatt: {
+    name: "Growatt",
+    type: "All-in-One, Single Stack",
+    width: 690,
+    depth: 186,
+    options: [
+      { kwh: 15, height: 1692 }
+    ]
+  }
+};
+
+function nearestDimensionOption(profile, batterySize) {
+  return profile.options.reduce((best, option) => {
+    return Math.abs(option.kwh - batterySize) < Math.abs(best.kwh - batterySize) ? option : best;
+  }, profile.options[0]);
+}
+
+function notesWithConfiguredDimensions(product, result, notes) {
+  const profile = dimensionProfiles[product.brand];
+  if (!profile || !result.batterySize) return notes;
+
+  const option = nearestDimensionOption(profile, result.batterySize);
+  const dimensionText = `* ${profile.name} Dimensions (${profile.type}, ${option.kwh}kWh):
+${profile.width}W x ${profile.depth}D x ${option.height}H mm.`;
+
+  return notes.replace(
+    /\* .+? Dimensions \([^)]+\):\n\d+W x \d+D x [\d/]+H mm\./,
+    dimensionText
+  );
+}
+
 function buildQuoteText(product, result) {
   const noteKey = product.brand === "Sigenergy" ? "Sigenergy" : product.brand;
-  const notes = pylonNotes[noteKey] || generalPylonNotes.join("\n");
+  const baseNotes = pylonNotes[noteKey] || generalPylonNotes.join("\n");
+  const notes = notesWithConfiguredDimensions(product, result, baseNotes);
   const extraLines = extraDefs
     .map(([key, label]) => ({ label, qty: num($(key + "Qty").value), price: num($(key + "Price").value) }))
     .filter((item) => item.qty > 0 && item.price > 0)
