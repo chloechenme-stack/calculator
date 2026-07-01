@@ -47,6 +47,8 @@ const USE_PROMO_FLOOR = true;
 let activeSheetContext = null;
 let sheetSyncTimer = null;
 let sheetSyncVersion = 0;
+let compareSyncTimer = null;
+let compareSyncVersion = 0;
 
 const extraDefs = [
   ["splits", "Extra solar splits", 200],
@@ -368,6 +370,13 @@ async function writeGoogleValues(spreadsheetId, data) {
   return payload;
 }
 
+async function batchGetGoogleValues(spreadsheetId, ranges) {
+  const params = new URLSearchParams({ valueRenderOption: "UNFORMATTED_VALUE" });
+  ranges.forEach((range) => params.append("ranges", range));
+  const payload = await fetchGoogleJson(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchGet?${params.toString()}`);
+  return payload.valueRanges || [];
+}
+
 async function loadPrivateSheetRows(sheetUrl) {
   const { spreadsheetId, gid } = parseSheetTarget(sheetUrl);
   const meta = await fetchGoogleJson(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`);
@@ -545,11 +554,11 @@ function applyDcCoupledAdjustment(sheetFinalPrice) {
   };
 }
 
-async function writeLeonRowInputs(rowNumber, valuesByField) {
+function leonRowInputData(rowNumber, valuesByField) {
   if (!activeSheetContext) throw new Error("还没有加载 Leon Sales sheet。");
   const editableColumns = activeSheetContext.editableColumns || {};
   const formulaRow = activeSheetContext.formulas?.[rowNumber - 1] || [];
-  const data = Object.entries(valuesByField)
+  return Object.entries(valuesByField)
     .map(([field, value]) => {
       const column = editableColumns[field];
       const columnIndex = column ? columnLettersToIndex(column) : -1;
@@ -559,11 +568,25 @@ async function writeLeonRowInputs(rowNumber, valuesByField) {
         : null;
     })
     .filter(Boolean);
+}
+
+async function writeLeonRowInputs(rowNumber, valuesByField) {
+  if (!activeSheetContext) throw new Error("还没有加载 Leon Sales sheet。");
+  const data = leonRowInputData(rowNumber, valuesByField);
 
   if (!data.length) {
     throw new Error("没有从第 3 行表头识别到可写入的数量列。");
   }
 
+  return writeGoogleValues(activeSheetContext.spreadsheetId, data);
+}
+
+async function writeLeonRowsInputs(rowNumbers, valuesByField) {
+  if (!activeSheetContext) throw new Error("还没有加载 Leon Sales sheet。");
+  const data = rowNumbers.flatMap((rowNumber) => leonRowInputData(rowNumber, valuesByField));
+  if (!data.length) {
+    throw new Error("没有从第 3 行表头识别到可写入的数量列。");
+  }
   return writeGoogleValues(activeSheetContext.spreadsheetId, data);
 }
 
@@ -575,6 +598,17 @@ async function readLeonRowOutputs(rowNumber) {
     finalPrice: money(payload.values?.[0]?.[0]),
     finalPriceRange
   };
+}
+
+async function readLeonRowsOutputs(rowNumbers) {
+  if (!activeSheetContext) throw new Error("还没有加载 Leon Sales sheet。");
+  const ranges = rowNumbers.map((rowNumber) => quotedA1Range(LEON_SHEET_PROFILE.title, LEON_SHEET_PROFILE.finalPriceColumn, rowNumber));
+  const valueRanges = await batchGetGoogleValues(activeSheetContext.spreadsheetId, ranges);
+  return valueRanges.map((item, index) => ({
+    rowNumber: rowNumbers[index],
+    finalPrice: money(item.values?.[0]?.[0]),
+    finalPriceRange: ranges[index]
+  }));
 }
 
 function inferBrand(inverter, wholesaler) {
@@ -970,6 +1004,58 @@ function scheduleLeonSheetCalculation(product) {
   }, 350);
 }
 
+function compareInputKey() {
+  return leonInputKey();
+}
+
+function compareFinalForProduct(product, inputKey) {
+  if (product.compareInputKey !== inputKey || !product.compareSheetFinal) return null;
+  return applyDcCoupledAdjustment(product.compareSheetFinal).final;
+}
+
+function scheduleCompareSheetCalculations(brand) {
+  clearTimeout(compareSyncTimer);
+  if (!activeSheetContext || !googleAccessToken) return;
+
+  const inputKey = compareInputKey();
+  const visibleProducts = products.filter((product) => {
+    return product.brand === brand
+      && product.sheetProfile === LEON_SHEET_PROFILE.title
+      && product.sheetRowNumber
+      && product.compareInputKey !== inputKey;
+  });
+  if (!visibleProducts.length) return;
+
+  const version = ++compareSyncVersion;
+  compareSyncTimer = setTimeout(async () => {
+    try {
+      const rowNumbers = visibleProducts.map((product) => product.sheetRowNumber);
+      await writeLeonRowsInputs(rowNumbers, getLeonValuesByField());
+      const outputs = await readLeonRowsOutputs(rowNumbers);
+      if (version !== compareSyncVersion || products[current]?.brand !== brand) return;
+
+      outputs.forEach((output, index) => {
+        const product = visibleProducts[index];
+        product.compareInputKey = inputKey;
+        product.compareSheetFinal = output.finalPrice;
+        product.compareFinalRange = output.finalPriceRange;
+        product.lastLeonInputKey = leonInputKey();
+        product.sheetFinal = output.finalPrice;
+        product.sheetYellowFinal = output.finalPrice;
+        product.sheetFinalRange = output.finalPriceRange;
+        product.sheetCalculationPending = false;
+      });
+      setSourceStatus(`已按当前配置同步 ${visibleProducts.length} 个同品牌方案`, "ok");
+      renderCompare(brand, { skipCompareSync: true });
+      if (products[current]?.brand === brand) update({ skipSheetSync: true });
+    } catch (error) {
+      if (version !== compareSyncVersion || products[current]?.brand !== brand) return;
+      setSourceStatus(`同品牌方案计算失败：${error.message}`, "error");
+      renderCompare(brand, { skipCompareSync: true });
+    }
+  }, 450);
+}
+
 function setExtraDefaults(product) {
   const importedDefaults = product.extraDefaults || {};
   const defaults = {
@@ -1213,19 +1299,23 @@ Important notes:
 ${notes}`;
 }
 
-function renderCompare(brand) {
+function renderCompare(brand, options = {}) {
   const cards = products.map((p, index) => ({ ...p, index })).filter((p) => p.brand === brand);
+  const inputKey = compareInputKey();
   $("compareList").innerHTML = cards.map((p) => {
     const active = p.index === current ? " active" : "";
-    const size = p.batQty * p.batUnit;
-    const solar = p.panels * 475 / 1000;
+    const size = num($("batteryQty").value) * p.batUnit;
+    const solar = num($("panelQty").value) * 475 / 1000;
     const estimate = estimateBase(p);
+    const compareFinal = compareFinalForProduct(p, inputKey);
+    const usesSheetCompare = Boolean(activeSheetContext && p.sheetProfile === LEON_SHEET_PROFILE.title && p.sheetRowNumber);
+    const displayFinal = usesSheetCompare ? compareFinal : estimate.final;
     const promoLabel = estimate.promoApplied ? `<span class="promo-label">促销最低价</span>` : "";
-    const sheetLabel = p.sheetFinal ? `<span class="promo-label">Google Sheet价</span>` : "";
+    const sheetLabel = usesSheetCompare ? `<span class="promo-label">${compareFinal ? "当前配置 Sheet价" : "计算中"}</span>` : "";
     const rowLabel = p.sheetRowNumber ? `<span>Row ${p.sheetRowNumber}</span>` : "";
     const calculatedLabel = estimate.promoApplied ? `<span>系统计算价 ${fmt(estimate.base)}</span>` : "";
     return `<button class="compare-card${active}" type="button" data-index="${p.index}">
-      <strong>${fmt(estimate.final)}</strong>
+      <strong>${displayFinal ? fmt(displayFinal) : "计算中"}</strong>
       ${promoLabel}
       ${sheetLabel}
       ${rowLabel}
@@ -1240,19 +1330,24 @@ function renderCompare(brand) {
       loadProduct();
     });
   });
+  if (!options.skipCompareSync) {
+    scheduleCompareSheetCalculations(brand);
+  }
 }
 
 function estimateBase(product) {
-  const batterySize = product.batQty * product.batUnit;
-  const solarSize = product.panels * 475 / 1000;
+  const batteryQty = num($("batteryQty").value);
+  const panelQty = num($("panelQty").value);
+  const batterySize = batteryQty * product.batUnit;
+  const solarSize = panelQty * 475 / 1000;
   const batteryCredit = batteryStcs(batterySize, DEFAULT_STC_FACTOR) * DEFAULT_STC_PRICE;
   const solarCredit = solarSize * DEFAULT_STC_FACTOR * DEFAULT_STC_PRICE;
-  const productTotal = product.inv * product.invQty + product.bat * product.batQty + product.panelPrice * product.panels + 67 * product.panels * 1.4;
+  const productTotal = product.inv * product.invQty + product.bat * batteryQty + product.panelPrice * panelQty + 67 * panelQty * 1.4;
   const base = productTotal * product.margin + 2000 + 300 * solarSize + 30 * batterySize - batteryCredit - solarCredit - (product.acCoupled ? 0 : WA_BATTERY_REBATE);
   const promoApplied = USE_PROMO_FLOOR && product.min > base;
   return {
     base,
-    final: product.sheetFinal || (promoApplied ? product.min : base),
+    final: promoApplied ? product.min : base,
     promoApplied
   };
 }
