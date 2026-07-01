@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>DMG Price Calculator</title>
-    <link rel="stylesheet" href="styles.css?v=20260701-0032">
+    <link rel="stylesheet" href="styles.css?v=20260701-0038">
   </head>
   <body>
     <main class="shell">
@@ -39,15 +39,18 @@
             <span>产品方案</span>
             <select id="productSelect"></select>
           </label>
+          <div id="productNote" class="product-note hidden"></div>
 
           <div class="grid-2">
             <label class="field">
               <span id="batteryQtyLabel">电池数量</span>
               <input id="batteryQty" type="number" min="0" step="1">
+              <strong id="batterySize" class="field-stat">0 kWh</strong>
             </label>
             <label id="panelQtyField" class="field">
               <span>太阳能板数量</span>
               <input id="panelQty" type="number" min="0" step="1">
+              <strong id="solarSize" class="field-stat">0 kW</strong>
             </label>
           </div>
 
@@ -60,7 +63,13 @@
 
           <div class="extras-head">
             <h2>Extras</h2>
-            <button id="resetExtras" type="button">重置</button>
+            <div class="extras-head-actions">
+              <div class="extras-total">
+                <span>Extras</span>
+                <strong id="extrasTotal">$0</strong>
+              </div>
+              <button id="resetExtras" type="button">重置</button>
+            </div>
           </div>
           <div id="extrasList" class="extras-list"></div>
         </aside>
@@ -81,13 +90,6 @@
             <span id="priceNote">含 GST，已扣除补贴</span>
           </div>
 
-          <div class="stats">
-            <div><span>电池容量</span><strong id="batterySize">0 kWh</strong></div>
-            <div><span>太阳能容量</span><strong id="solarSize">0 kW</strong></div>
-            <div><span>每 kWh</span><strong id="perKwh">$0</strong></div>
-            <div><span>Extras</span><strong id="extrasTotal">$0</strong></div>
-          </div>
-
           <div class="breakdown">
             <h3>价格明细</h3>
             <dl>
@@ -99,8 +101,8 @@
 
           <div class="compare">
             <div class="section-head">
-              <h3>同品牌方案</h3>
-              <button id="calculateCompareBtn" type="button">计算同品牌方案</button>
+              <h3>不同品牌同配置方案</h3>
+              <button id="calculateCompareBtn" type="button">计算同配置方案</button>
             </div>
             <div id="compareList" class="compare-list"></div>
           </div>
@@ -126,6 +128,6 @@
       </div>
     </div>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="app.js?v=20260701-0040"></script>
+    <script src="app.js?v=20260701-0048"></script>
   </body>
 </html>

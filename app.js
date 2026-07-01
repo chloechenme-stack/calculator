@@ -615,6 +615,15 @@ async function writeLeonRowsInputs(rowNumbers, valuesByField) {
   return writeGoogleValues(activeSheetContext.spreadsheetId, data);
 }
 
+async function writeLeonRowsInputEntries(entries) {
+  if (!activeSheetContext) throw new Error("还没有加载 Leon Sales sheet。");
+  const data = entries.flatMap((entry) => leonRowInputData(entry.rowNumber, entry.valuesByField));
+  if (!data.length) {
+    throw new Error("没有从第 3 行表头识别到可写入的数量列。");
+  }
+  return writeGoogleValues(activeSheetContext.spreadsheetId, data);
+}
+
 async function readLeonRowOutputs(rowNumber) {
   if (!activeSheetContext) throw new Error("还没有加载 Leon Sales sheet。");
   const finalPriceRange = quotedA1Range(LEON_SHEET_PROFILE.title, LEON_SHEET_PROFILE.finalPriceColumn, rowNumber);
@@ -739,6 +748,7 @@ function csvRowsToProducts(rows, formulas = [], profile = null) {
   const panelQtyIdx = col("SOLAR PANELS", "PANEL QUANTITY");
   const productTotalIdx = col("PRODUCT TOTAL");
   const gstCommIdx = col("GST +COMM", "GST");
+  const productNoteIdx = profile ? columnLettersToIndex("AX") : col("NOTE", "NOTES", "COMMENT", "COMMENTS");
   const sheetFinalIdx = col("SELL PRICE WITH EXTRAS") >= 0
     ? col("SELL PRICE WITH EXTRAS")
     : colWithWords("SELL", "PRICE", "EXTRA");
@@ -777,6 +787,7 @@ function csvRowsToProducts(rows, formulas = [], profile = null) {
     const batterySize = money(row[batterySizeIdx >= 0 ? batterySizeIdx : 7]);
     const productTotal = money(row[productTotalIdx >= 0 ? productTotalIdx : 14]);
     const gstComm = money(row[gstCommIdx >= 0 ? gstCommIdx : 15]);
+    const productNote = cleanText(row[productNoteIdx]);
     const margin = productTotal > 0 && gstComm > 0 ? gstComm / productTotal : 1.25;
     const brand = inferBrand(inverter, wholesaler || sectionBrand);
     const splits = extraPair(row, "splits", "EXTRA SPLITS");
@@ -839,6 +850,7 @@ function csvRowsToProducts(rows, formulas = [], profile = null) {
         enclosure12: enclosure12.price || undefined
       },
       brand,
+      productNote,
       wholesaler: wholesaler || sectionBrand || brand,
       inverter,
       battery,
@@ -1071,8 +1083,12 @@ function scheduleLeonSheetCalculation(product) {
   }, 350);
 }
 
-function compareInputKey() {
-  return leonInputKey();
+function compareInputKey(baseProduct = products[current]) {
+  const values = getLeonValuesByField();
+  return JSON.stringify({
+    values,
+    targetBatterySize: values.batteryQty * (baseProduct?.batUnit || 0)
+  });
 }
 
 function compareFinalForProduct(product, inputKey) {
@@ -1080,14 +1096,72 @@ function compareFinalForProduct(product, inputKey) {
   return applyDcCoupledAdjustment(product.compareSheetFinal).final;
 }
 
-function scheduleCompareSheetCalculations(brand, options = {}) {
+function inverterSizeKw(product) {
+  const match = String(product?.inverter || "").match(/(\d+(?:\.\d+)?)\s*kW/i);
+  return match ? Number(match[1]).toFixed(3) : "";
+}
+
+function inverterPhase(product) {
+  const value = String(product?.inverter || "").toLowerCase();
+  if (/\b3\s*p\b|\b3\s*phase\b|three\s*phase/.test(value)) return "3P";
+  if (/\b1\s*p\b|\b1\s*phase\b|single\s*phase/.test(value)) return "1P";
+  return "";
+}
+
+function sameConfigDifferentBrandProducts(baseProduct) {
+  const baseSize = inverterSizeKw(baseProduct);
+  const basePhase = inverterPhase(baseProduct);
+  if (!baseSize || !basePhase || baseProduct?.isEvCharger) return [];
+
+  return products
+    .map((product, index) => ({ product, index }))
+    .filter(({ product }) => {
+      return !product.isEvCharger
+        && product.brand !== baseProduct.brand
+        && inverterSizeKw(product) === baseSize
+        && inverterPhase(product) === basePhase;
+    });
+}
+
+function compareTitleForProduct(product) {
+  const size = inverterSizeKw(product);
+  const phase = inverterPhase(product);
+  return size && phase ? `${Number(size)}kW ${phase}` : "当前配置";
+}
+
+function comparableValuesForProduct(baseProduct, product) {
+  const values = getLeonValuesByField();
+  const targetBatterySize = values.batteryQty * (baseProduct?.batUnit || 0);
+  const targetBatteryQty = targetBatterySize && product?.batUnit
+    ? Math.max(0, Math.round(targetBatterySize / product.batUnit))
+    : values.batteryQty;
+  const disabled = disabledExtrasForProduct(product);
+
+  const comparableValues = {
+    ...values,
+    batteryQty: targetBatteryQty
+  };
+  disabled.forEach((key) => {
+    if (key in comparableValues) comparableValues[key] = 0;
+  });
+  return comparableValues;
+}
+
+function compareExtrasSummary(valuesByField, product) {
+  return extraDefs
+    .map(([key, label]) => ({ key, label: extraLabel(key, label), qty: valuesByField[key] || 0 }))
+    .filter((item) => item.qty > 0)
+    .map((item) => `${item.label} x${item.qty}`)
+    .join(", ") || "No selected extras";
+}
+
+function scheduleCompareSheetCalculations(baseProduct, options = {}) {
   clearTimeout(compareSyncTimer);
   if (!activeSheetContext || !googleAccessToken) return;
 
-  const inputKey = compareInputKey();
-  const visibleProducts = products.filter((product) => {
-    return product.brand === brand
-      && product.sheetProfile === LEON_SHEET_PROFILE.title
+  const inputKey = compareInputKey(baseProduct);
+  const visibleProducts = sameConfigDifferentBrandProducts(baseProduct).map((entry) => entry.product).filter((product) => {
+    return product.sheetProfile === LEON_SHEET_PROFILE.title
       && product.sheetRowNumber
       && !product.isEvCharger
       && product.compareInputKey !== inputKey;
@@ -1102,33 +1176,37 @@ function scheduleCompareSheetCalculations(brand, options = {}) {
   }
   compareSyncTimer = setTimeout(async () => {
     try {
+      const rowEntries = visibleProducts.map((product) => ({
+        rowNumber: product.sheetRowNumber,
+        valuesByField: comparableValuesForProduct(baseProduct, product)
+      }));
       const rowNumbers = visibleProducts.map((product) => product.sheetRowNumber);
-      await writeLeonRowsInputs(rowNumbers, getLeonValuesByField());
+      await writeLeonRowsInputEntries(rowEntries);
       const outputs = await readLeonRowsOutputs(rowNumbers);
-      if (version !== compareSyncVersion || products[current]?.brand !== brand) return;
+      if (version !== compareSyncVersion || products[current] !== baseProduct) return;
 
       outputs.forEach((output, index) => {
         const product = visibleProducts[index];
         product.compareInputKey = inputKey;
         product.compareSheetFinal = output.finalPrice;
         product.compareFinalRange = output.finalPriceRange;
-        product.lastLeonInputKey = leonInputKey();
+        product.lastLeonInputKey = inputKey;
         product.sheetFinal = output.finalPrice;
         product.sheetYellowFinal = output.finalPrice;
         product.sheetFinalRange = output.finalPriceRange;
         product.sheetCalculationPending = false;
       });
-      setSourceStatus(`已按当前配置同步 ${visibleProducts.length} 个同品牌方案`, "ok");
-      renderCompare(brand, { skipCompareSync: true });
-      if (products[current]?.brand === brand) update({ skipSheetSync: true });
+      setSourceStatus(`已按当前配置同步 ${visibleProducts.length} 个不同品牌同配置方案`, "ok");
+      renderCompare(baseProduct, { skipCompareSync: true });
+      if (products[current] === baseProduct) update({ skipSheetSync: true });
     } catch (error) {
-      if (version !== compareSyncVersion || products[current]?.brand !== brand) return;
-      setSourceStatus(`同品牌方案计算失败：${error.message}`, "error");
-      renderCompare(brand, { skipCompareSync: true });
+      if (version !== compareSyncVersion || products[current] !== baseProduct) return;
+      setSourceStatus(`不同品牌同配置方案计算失败：${error.message}`, "error");
+      renderCompare(baseProduct, { skipCompareSync: true });
     } finally {
       if (options.manual && version === compareSyncVersion && button) {
         button.disabled = false;
-        button.textContent = "计算同品牌方案";
+        button.textContent = "计算同配置方案";
       }
     }
   }, options.manual ? 0 : 450);
@@ -1178,17 +1256,69 @@ function setExtraDefaults(product) {
   });
 }
 
+function disabledExtrasForProduct(product) {
+  const note = cleanText(product?.productNote).toLowerCase();
+  const disabled = new Set();
+
+  if (/can\s*not|cannot|can't|no/.test(note) && /full\s*house|whole\s*house|whole\s*home/.test(note)) {
+    disabled.add("wholeHome");
+  }
+  if (/essential\s*backup\s*only|essential\s*loads?\s*backup\s*only/.test(note)) {
+    disabled.add("wholeHome");
+  }
+  if (/(can\s*not|cannot|can't)\s*(do\s*)?(essential\s*loads?\s*)?backup/.test(note)
+    || /no\s*essential\s*loads?\s*backup|no\s*essential\s*backup/.test(note)
+    || /essential\s*loads?\s*backup\s*(not\s*available|unavailable|disabled)/.test(note)) {
+    disabled.add("backup");
+  }
+  if (/no\s*backup|backup\s*not\s*available/.test(note)) {
+    disabled.add("backup");
+    disabled.add("wholeHome");
+  }
+
+  return disabled;
+}
+
+function setProductNote(product) {
+  const noteElement = $("productNote");
+  if (!noteElement) return;
+  const note = cleanText(product?.productNote);
+  noteElement.textContent = note;
+  noteElement.classList.toggle("hidden", !note);
+}
+
+function applyProductRestrictions(product) {
+  const disabled = disabledExtrasForProduct(product);
+  activeExtraDefs(product).forEach(([key]) => {
+    const qty = $(key + "Qty");
+    const price = $(key + "Price");
+    const item = document.querySelector(`[data-extra-key="${key}"]`);
+    const isDisabled = disabled.has(key);
+
+    if (isDisabled && qty) {
+      if (qty.type === "checkbox") qty.checked = false;
+      else qty.value = 0;
+    }
+    [qty, price].forEach((element) => {
+      if (!element) return;
+      element.disabled = isDisabled;
+      element.title = isDisabled ? "Disabled by product note" : "";
+    });
+    item?.classList.toggle("extra-item-disabled", isDisabled);
+  });
+}
+
 function renderExtras() {
   const product = products[current];
   $("extrasList").innerHTML = activeExtraDefs(product).map(([key, label, price]) => product?.isEvCharger ? `
-    <label class="extra-item ev-extra-item">
+    <label class="extra-item ev-extra-item" data-extra-key="${key}">
       <strong class="extra-label">${escapeHtml(label)}</strong>
       <span class="extra-price-static">+${fmt(price)}</span>
       <input id="${key}Price" type="hidden" value="${price}">
       <input class="extra-qty" id="${key}Qty" type="checkbox" value="1" aria-label="${escapeHtml(label)}">
     </label>
   ` : `
-    <div class="extra-item">
+    <div class="extra-item" data-extra-key="${key}">
       <label class="extra-price-field">
         <strong class="extra-label">${escapeHtml(extraLabel(key, label))}</strong>
         <input id="${key}Price" type="number" min="0" step="1" value="${price}" aria-label="${escapeHtml(extraLabel(key, label))} price">
@@ -1214,11 +1344,12 @@ function productOptionLabel(product) {
   return `${rowPrefix}${product.inverter} / ${product.battery}`;
 }
 
-function renderProducts() {
+function renderProducts(selectedIndex = null) {
   const brand = $("brandSelect").value;
   const list = products.map((p, index) => ({ ...p, index })).filter((p) => p.brand === brand);
   $("productSelect").innerHTML = list.map((p) => `<option value="${p.index}">${escapeHtml(productOptionLabel(p))}</option>`).join("");
-  current = list[0]?.index || 0;
+  const selectedInBrand = list.some((product) => product.index === selectedIndex);
+  current = selectedInBrand ? selectedIndex : list[0]?.index || 0;
   $("productSelect").value = current;
   loadProduct();
 }
@@ -1236,8 +1367,10 @@ function loadProduct() {
   $("batteryQty").value = product.isEvCharger ? product.batQty ?? 1 : product.batQty;
   $("panelQty").value = product.isEvCharger ? 0 : product.panels;
   $("dcCoupled").checked = !product.acCoupled;
+  setProductNote(product);
   renderExtras();
   setExtraDefaults(product);
+  applyProductRestrictions(product);
   if (product.sheetProfile === LEON_SHEET_PROFILE.title && product.sheetFinal) {
     product.lastLeonInputKey = leonInputKey();
   }
@@ -1267,7 +1400,6 @@ function update(options = {}) {
   $("finalPrice").textContent = fmt(result.final);
   $("batterySize").textContent = `${result.batterySize.toFixed(1)} kWh`;
   $("solarSize").textContent = `${result.solarSize.toFixed(2)} kW`;
-  $("perKwh").textContent = result.batterySize ? fmt(result.final / result.batterySize) : "$0";
   $("extrasTotal").textContent = fmt(result.extras);
   setText("productTotal", detailValue(result.productTotal));
   setText("gstComm", detailValue(result.gstComm));
@@ -1294,7 +1426,7 @@ function update(options = {}) {
     ? `促销最低价 ${fmt(result.promoFloor)} 已套用`
     : "按系统基础价 + extras 计算，含 GST 并已扣除补贴";
   $("quoteText").value = buildQuoteText(product, result);
-  renderCompare(product.brand);
+  renderCompare(product);
   if (!options.skipSheetSync) {
     scheduleLeonSheetCalculation(product);
   }
@@ -1409,14 +1541,30 @@ Important notes:
 ${notes}`;
 }
 
-function renderCompare(brand, options = {}) {
-  const cards = products.map((p, index) => ({ ...p, index })).filter((p) => p.brand === brand);
-  const inputKey = compareInputKey();
-  $("compareList").innerHTML = cards.map((p) => {
-    const active = p.index === current ? " active" : "";
-    const estimate = estimateBase(p, { useCurrentInputs: active });
-    const batteryQty = active ? controlQty("batteryQty") : p.batQty;
-    const panelQty = active ? controlQty("panelQty") : p.panels;
+function selectProduct(index) {
+  const product = products[index];
+  if (!product) return;
+  $("brandSelect").value = product.brand;
+  renderProducts(index);
+}
+
+function renderCompare(baseProduct, options = {}) {
+  const cards = sameConfigDifferentBrandProducts(baseProduct);
+  const inputKey = compareInputKey(baseProduct);
+  const button = $("calculateCompareBtn");
+  if (button) button.textContent = "计算同配置方案";
+
+  if (!cards.length) {
+    $("compareList").innerHTML = `<p class="compare-empty">没有找到不同品牌的 ${escapeHtml(compareTitleForProduct(baseProduct))} 方案</p>`;
+    return;
+  }
+
+  $("compareList").innerHTML = cards.map(({ product: p, index }) => {
+    const active = index === current ? " active" : "";
+    const compareValues = comparableValuesForProduct(baseProduct, p);
+    const estimate = estimateBase(p, { useCurrentInputs: active, valuesByField: compareValues });
+    const batteryQty = active ? controlQty("batteryQty") : compareValues.batteryQty;
+    const panelQty = active ? controlQty("panelQty") : compareValues.panelQty;
     const size = p.isEvCharger ? 0 : batteryQty * p.batUnit;
     const solar = p.isEvCharger ? 0 : panelQty * 475 / 1000;
     const compareFinal = compareFinalForProduct(p, inputKey);
@@ -1424,35 +1572,41 @@ function renderCompare(brand, options = {}) {
     const displayFinal = usesSheetCompare && compareFinal ? compareFinal : estimate.final;
     const promoLabel = estimate.promoApplied ? `<span class="promo-label">促销最低价</span>` : "";
     const sheetLabel = usesSheetCompare && compareFinal ? `<span class="promo-label">当前配置 Sheet价</span>` : "";
-    const rowLabel = p.sheetRowNumber ? `<span>Row ${p.sheetRowNumber}</span>` : "";
+    const rowLabel = p.sheetRowNumber ? ` (Row ${p.sheetRowNumber})` : "";
     const calculatedLabel = estimate.promoApplied ? `<span>系统计算价 ${fmt(estimate.base)}</span>` : "";
     const configLabel = p.isEvCharger && active
       ? `${controlQty("batteryQty")} unit / selected options`
       : p.isEvCharger
       ? `${p.batQty ?? 1} unit / row ${p.sheetRowNumber || "default"}`
       : `${size.toFixed(1)} kWh battery / ${solar.toFixed(2)} kW solar`;
-    return `<button class="compare-card${active}" type="button" data-index="${p.index}">
-      <strong>${displayFinal ? fmt(displayFinal) : "计算中"}</strong>
-      ${promoLabel}
-      ${sheetLabel}
-      ${rowLabel}
-      <span>${escapeHtml(p.inverter)}</span>
+    const extrasLabel = compareExtrasSummary(compareValues, p);
+    return `<button class="compare-card${active}" type="button" data-index="${index}">
+      <div class="compare-card-top">
+        <span class="compare-brand">${escapeHtml(p.brand)}</span>
+        <strong class="compare-price">${displayFinal ? fmt(displayFinal) : "计算中"}</strong>
+      </div>
+      <div class="compare-badges">
+        ${promoLabel}
+        ${sheetLabel}
+      </div>
+      <span>${escapeHtml(`${p.inverter}${rowLabel}`)}</span>
       <span>${escapeHtml(configLabel)}</span>
+      <span class="compare-extras">${escapeHtml(extrasLabel)}</span>
       ${calculatedLabel}
     </button>`;
   }).join("");
   document.querySelectorAll(".compare-card").forEach((card) => {
     card.addEventListener("click", () => {
-      $("productSelect").value = card.dataset.index;
-      loadProduct();
+      selectProduct(Number(card.dataset.index));
     });
   });
 }
 
 function estimateBase(product, options = {}) {
   const useCurrentInputs = options.useCurrentInputs ?? true;
+  const valuesByField = options.valuesByField || {};
   if (product.isEvCharger) {
-    const quantity = useCurrentInputs ? controlQty("batteryQty") : product.batQty ?? 1;
+    const quantity = useCurrentInputs ? controlQty("batteryQty") : valuesByField.batteryQty ?? product.batQty ?? 1;
     const base = (product.basePrice || 1995) * quantity;
     const extras = useCurrentInputs
       ? activeExtraDefs(product).reduce((sum, [key]) => sum + controlQty(key + "Qty") * controlNum(key + "Price"), 0)
@@ -1464,8 +1618,8 @@ function estimateBase(product, options = {}) {
     };
   }
 
-  const batteryQty = useCurrentInputs ? num($("batteryQty").value) : product.batQty;
-  const panelQty = useCurrentInputs ? num($("panelQty").value) : product.panels;
+  const batteryQty = useCurrentInputs ? num($("batteryQty").value) : valuesByField.batteryQty ?? product.batQty;
+  const panelQty = useCurrentInputs ? num($("panelQty").value) : valuesByField.panelQty ?? product.panels;
   const batterySize = batteryQty * product.batUnit;
   const solarSize = panelQty * 475 / 1000;
   const batteryCredit = batteryStcs(batterySize, DEFAULT_STC_FACTOR) * DEFAULT_STC_PRICE;
@@ -1492,9 +1646,14 @@ $("brandSelect").addEventListener("change", renderProducts);
 $("productSelect").addEventListener("change", loadProduct);
 ["batteryQty", "panelQty"].forEach((id) => $(id).addEventListener("input", update));
 $("dcCoupled").addEventListener("change", update);
-$("resetExtras").addEventListener("click", () => setExtraDefaults(products[current]) || update());
+$("resetExtras").addEventListener("click", () => {
+  const product = products[current];
+  setExtraDefaults(product);
+  applyProductRestrictions(product);
+  update();
+});
 $("printBtn").addEventListener("click", () => window.print());
-$("calculateCompareBtn").addEventListener("click", () => scheduleCompareSheetCalculations(products[current].brand, { manual: true }));
+$("calculateCompareBtn").addEventListener("click", () => scheduleCompareSheetCalculations(products[current], { manual: true }));
 $("copyQuoteBtn").addEventListener("click", async () => {
   const text = $("quoteText").value;
   try {
