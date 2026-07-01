@@ -572,6 +572,17 @@ function inferBatteryUnit(battery, size, qty) {
   return match ? Number(match[1]) : 0;
 }
 
+function isLeonProductRow(inverter, battery, finalPrice) {
+  const combined = `${inverter} ${battery}`;
+  const normalizedInverter = normalizeHeader(inverter);
+  const sectionOnly = ["GOODWE", "SIGENERGY", "FOXESS", "FOX ESS", "GROWATT", "SUNGROW", "TESLA", "ANKER", "ALPHA"];
+  const notePattern = /W\s*[*X×]\s*D\s*[*X×]\s*H|DIMENSIONS?|CLEARANCE|GARAGE INSTALL|INSTALL-ONLY|SPARE TILES|CUSTOMER TO|FINANCE|METER UPGRADE|WESTERN POWER|YOUTUBE|REVIEWS?|INV:\s*\d|BAT:\s*\d|DO NOT SELL|NOT CEC/i;
+
+  return finalPrice > 0
+    && !sectionOnly.includes(normalizedInverter)
+    && !notePattern.test(combined);
+}
+
 function csvRowsToProducts(rows, formulas = [], profile = null) {
   const headerIndex = profile
     ? profile.headerRow - 1
@@ -642,6 +653,7 @@ function csvRowsToProducts(rows, formulas = [], profile = null) {
   const sheetFinalIdx = col("SELL PRICE WITH EXTRAS") >= 0
     ? col("SELL PRICE WITH EXTRAS")
     : colWithWords("SELL", "PRICE", "EXTRA");
+  const directFinalIdx = profile ? columnLettersToIndex(profile.finalPriceColumn) : sheetFinalIdx;
   const extraPair = (row, key, ...names) => {
     const priceIdx = col(...names);
     const qtyIdx = findQtyAfter(priceIdx);
@@ -668,6 +680,9 @@ function csvRowsToProducts(rows, formulas = [], profile = null) {
     }
     if (!inverter || !battery || (!profile && !inv && !bat)) return null;
 
+    const sheetYellowFinal = money(row[directFinalIdx]);
+    if (profile && !isLeonProductRow(inverter, battery, sheetYellowFinal)) return null;
+
     const batteryQty = money(row[batteryQtyIdx >= 0 ? batteryQtyIdx : 6]);
     const batterySize = money(row[batterySizeIdx >= 0 ? batterySizeIdx : 7]);
     const productTotal = money(row[productTotalIdx >= 0 ? productTotalIdx : 14]);
@@ -687,8 +702,6 @@ function csvRowsToProducts(rows, formulas = [], profile = null) {
     const enclosure12 = extraPair(row, "enclosure", "EXTERNAL ENCLOSURE BOX 12");
     const enclosure = enclosure12.qty ? enclosure12 : enclosure8;
     const sheetTotals = profile ? { extras: 0, final: 0 } : masterSalesTotals(row);
-    const directFinalIdx = profile ? columnLettersToIndex(profile.finalPriceColumn) : sheetFinalIdx;
-    const sheetYellowFinal = money(row[directFinalIdx]);
     const sheetHiddenX = 0;
     const sheetBase = 0;
     const formulaRow = formulas[rowIndex] || [];
