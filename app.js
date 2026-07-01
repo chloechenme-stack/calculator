@@ -49,15 +49,14 @@ let sheetSyncTimer = null;
 let sheetSyncVersion = 0;
 
 const extraDefs = [
-  ["phase", "3 phase", 500],
   ["splits", "Extra solar splits", 200],
   ["optimizer", "Optimizer", 70],
-  ["removal", "Panel removal / rewiring", 40],
+  ["removal", "Panel removal", 40],
+  ["rewiring", "Panel rewiring", 40],
   ["double", "Double storey", 2000],
-  ["switch", "Switchboard / full-home backup", 1650],
-  ["backup", "Essential backup / Gateway", 600],
-  ["wholeHome", "Whole-home backup", 2000],
-  ["smart", "Smart meter", 0],
+  ["switch", "Switchboard upgrade", 1650],
+  ["backup", "Essential loads backup", 600],
+  ["wholeHome", "Whole-house backup", 2000],
   ["tesla", "Tesla EV charger", 1995],
   ["sigEv", "Sigenergy AC EV charger", 1995],
   ["enclosure", "External enclosure", 440]
@@ -489,6 +488,30 @@ function buildHeaderMap(headers) {
   };
 }
 
+function labelForEditableColumn(headers, columnLetters) {
+  const columnIndex = columnLetters ? columnLettersToIndex(columnLetters) : -1;
+  if (columnIndex < 0) return "";
+
+  const current = cleanText(headers[columnIndex]);
+  if (current && !/^QTY|QUANTITY$/i.test(current)) return current;
+
+  for (let index = columnIndex - 1; index >= Math.max(0, columnIndex - 4); index -= 1) {
+    const label = cleanText(headers[index]);
+    if (label && !/^QTY|QUANTITY$/i.test(label)) return label;
+  }
+  return current;
+}
+
+function buildEditableLabels(headers, headerMap) {
+  return Object.fromEntries(extraDefs.map(([key, fallbackLabel]) => {
+    return [key, labelForEditableColumn(headers, headerMap[key]) || fallbackLabel];
+  }));
+}
+
+function extraLabel(key, fallbackLabel) {
+  return activeSheetContext?.editableLabels?.[key] || fallbackLabel;
+}
+
 function getLeonValuesByField() {
   return {
     batteryQty: num($("batteryQty").value),
@@ -496,7 +519,7 @@ function getLeonValuesByField() {
     splits: num($("splitsQty").value),
     optimizer: num($("optimizerQty").value),
     removal: num($("removalQty").value),
-    rewiring: num($("removalQty").value),
+    rewiring: num($("rewiringQty").value),
     double: num($("doubleQty").value),
     switch: num($("switchQty").value),
     backup: num($("backupQty").value),
@@ -693,6 +716,7 @@ function csvRowsToProducts(rows, formulas = [], profile = null) {
     const splits = extraPair(row, "splits", "EXTRA SPLITS");
     const optimizer = extraPair(row, "optimizer", "OPTIMIZER");
     const removal = extraPair(row, "removal", "PANEL REMOVAL");
+    const rewiring = extraPair(row, "rewiring", "PANEL REWIRING");
     const doubleStorey = extraPair(row, "double", "EXTRAS DOUBLE", "DOUBLE STOREY");
     const switchboard = extraPair(row, "switch", "SWITCHBOARD");
     const backup = extraPair(row, "backup", "ESSENTIAL LOADS BACKUP");
@@ -723,6 +747,7 @@ function csvRowsToProducts(rows, formulas = [], profile = null) {
         splits: splits.qty,
         optimizer: optimizer.qty,
         removal: removal.qty,
+        rewiring: rewiring.qty,
         double: doubleStorey.qty,
         switch: switchboard.qty,
         backup: backup.qty,
@@ -735,6 +760,7 @@ function csvRowsToProducts(rows, formulas = [], profile = null) {
         splits: splits.price || undefined,
         optimizer: optimizer.price || undefined,
         removal: removal.price || undefined,
+        rewiring: rewiring.price || undefined,
         double: doubleStorey.price || undefined,
         switch: switchboard.price || undefined,
         backup: backup.price || undefined,
@@ -794,11 +820,13 @@ async function loadSheetData() {
         spreadsheetId: result.spreadsheetId,
         title: result.title,
         editableColumns: headerMap,
+        editableLabels: buildEditableLabels(headers, headerMap),
         formulas: result.formulas
       }
       : null;
     products = csvRowsToProducts(rows, result.formulas, profile);
     current = 0;
+    renderExtras();
     renderBrands();
     $("brandSelect").value = products[0].brand;
     renderProducts();
@@ -811,6 +839,7 @@ async function loadSheetData() {
     activeSheetContext = null;
     products = [...defaultProducts];
     current = 0;
+    renderExtras();
     renderBrands();
     renderProducts();
     setSourceStatus(`读取失败：${error.message} 当前仍使用内置数据。`, "error");
@@ -944,15 +973,14 @@ function scheduleLeonSheetCalculation(product) {
 function setExtraDefaults(product) {
   const importedDefaults = product.extraDefaults || {};
   const defaults = {
-    phase: product.dynamic ? importedDefaults.phase || 0 : product.phaseQty || 0,
     splits: importedDefaults.splits || 0,
     optimizer: importedDefaults.optimizer || 0,
     removal: product.dynamic ? importedDefaults.removal || 0 : product.baseRemoval || 0,
+    rewiring: importedDefaults.rewiring || 0,
     double: product.dynamic ? importedDefaults.double || 0 : product.baseDouble || 0,
     switch: product.dynamic ? importedDefaults.switch || 0 : product.switchQty || 0,
     backup: product.dynamic ? importedDefaults.backup || 0 : product.baseBackup || 0,
     wholeHome: product.dynamic ? importedDefaults.wholeHome || 0 : 0,
-    smart: 0,
     tesla: product.dynamic ? importedDefaults.tesla || 0 : product.teslaEvQty || 0,
     sigEv: product.dynamic ? importedDefaults.sigEv || 0 : product.sigEvQty || 0,
     enclosure: product.dynamic ? importedDefaults.enclosure || 0 : product.baseEnclosure || 0
@@ -962,6 +990,7 @@ function setExtraDefaults(product) {
     splits: importedPrices.splits || 200,
     optimizer: importedPrices.optimizer || 70,
     removal: importedPrices.removal || 40,
+    rewiring: importedPrices.rewiring || 40,
     double: product.doublePrice || 2000,
     switch: importedPrices.switch || 1650,
     backup: product.backupPrice || 600,
@@ -980,10 +1009,10 @@ function renderExtras() {
   $("extrasList").innerHTML = extraDefs.map(([key, label, price]) => `
     <div class="extra-item">
       <label class="extra-price-field">
-        <strong class="extra-label">${label}</strong>
-        <input id="${key}Price" type="number" min="0" step="1" value="${price}" aria-label="${label} price">
+        <strong class="extra-label">${escapeHtml(extraLabel(key, label))}</strong>
+        <input id="${key}Price" type="number" min="0" step="1" value="${price}" aria-label="${escapeHtml(extraLabel(key, label))} price">
       </label>
-      <input class="extra-qty" id="${key}Qty" type="number" min="0" step="1" value="0" aria-label="${label} quantity">
+      <input class="extra-qty" id="${key}Qty" type="number" min="0" step="1" value="0" aria-label="${escapeHtml(extraLabel(key, label))} quantity">
     </div>
   `).join("");
   extraDefs.forEach(([key]) => {
@@ -1153,7 +1182,7 @@ function buildQuoteText(product, result) {
   const baseNotes = pylonNotes[noteKey] || generalPylonNotes.join("\n");
   const notes = notesWithConfiguredDimensions(product, result, baseNotes);
   const extraLines = extraDefs
-    .map(([key, label]) => ({ label, qty: num($(key + "Qty").value), price: num($(key + "Price").value) }))
+    .map(([key, label]) => ({ label: extraLabel(key, label), qty: num($(key + "Qty").value), price: num($(key + "Price").value) }))
     .filter((item) => item.qty > 0 && item.price > 0)
     .map((item) => `- ${item.label}: ${item.qty} x ${fmt(item.price)} = ${fmt(item.qty * item.price)}`);
   const extrasText = extraLines.length ? extraLines.join("\n") : "- No selected extras";
