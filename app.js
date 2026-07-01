@@ -770,6 +770,7 @@ function csvRowsToProducts(rows, formulas = [], profile = null) {
 }
 
 async function loadSheetData() {
+  $("googlePrompt")?.classList.add("hidden");
   const button = $("loadSheetBtn");
   button.disabled = true;
   setSourceStatus(googleAccessToken ? "正在读取 Google Sheet..." : "正在授权并读取 Google Sheet...", "");
@@ -1237,6 +1238,8 @@ renderBrands();
 renderProducts();
 
 $("loadSheetBtn").addEventListener("click", loadSheetData);
+$("promptLoadSheetBtn").addEventListener("click", loadSheetData);
+$("promptLaterBtn").addEventListener("click", () => $("googlePrompt").classList.add("hidden"));
 $("brandSelect").addEventListener("change", renderProducts);
 $("productSelect").addEventListener("change", loadProduct);
 ["batteryQty", "panelQty"].forEach((id) => $(id).addEventListener("input", update));
