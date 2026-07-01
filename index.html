@@ -4,30 +4,30 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>DMG Price Calculator</title>
-    <link rel="stylesheet" href="styles.css?v=20260701-0031">
+    <link rel="stylesheet" href="styles.css?v=20260701-0032">
   </head>
   <body>
     <main class="shell">
+      <section class="source-panel panel">
+        <label class="field">
+          <span>Google OAuth Client ID</span>
+          <input id="googleClientId" type="text" placeholder="粘贴 Google OAuth Client ID">
+        </label>
+        <label class="field">
+          <span>Google Sheet 数据源</span>
+          <input id="sheetUrl" type="url" value="https://docs.google.com/spreadsheets/d/1mDvDIHcHQgH8_BkguTExC2pBUKJeaBYft3yROmVHu34/edit?gid=959073985#gid=959073985">
+        </label>
+        <div class="source-actions">
+          <button id="loadSheetBtn" type="button">加载 Google Sheet</button>
+        </div>
+        <p id="sourceStatus" class="source-status">当前使用内置数据</p>
+      </section>
+
       <section class="workspace">
         <aside class="panel controls">
           <div class="brand-block">
             <p class="eyebrow">DMG Solar</p>
             <h1>价格计算器</h1>
-          </div>
-
-          <div class="source-panel">
-            <label class="field">
-              <span>Google OAuth Client ID</span>
-              <input id="googleClientId" type="text" placeholder="粘贴 Google OAuth Client ID">
-            </label>
-            <label class="field">
-              <span>Google Sheet 数据源</span>
-              <input id="sheetUrl" type="url" value="https://docs.google.com/spreadsheets/d/1mDvDIHcHQgH8_BkguTExC2pBUKJeaBYft3yROmVHu34/edit?gid=959073985#gid=959073985">
-            </label>
-            <div class="source-actions">
-              <button id="loadSheetBtn" type="button">加载 Google Sheet</button>
-            </div>
-            <p id="sourceStatus" class="source-status">当前使用内置数据</p>
           </div>
 
           <label class="field">
@@ -97,17 +97,20 @@
             </dl>
           </div>
 
+          <div class="compare">
+            <div class="section-head">
+              <h3>同品牌方案</h3>
+              <button id="calculateCompareBtn" type="button">计算同品牌方案</button>
+            </div>
+            <div id="compareList" class="compare-list"></div>
+          </div>
+
           <div class="quote-text">
             <div class="section-head">
               <h3>可复制报价文字</h3>
               <button id="copyQuoteBtn" type="button">复制</button>
             </div>
             <textarea id="quoteText" rows="16" spellcheck="false"></textarea>
-          </div>
-
-          <div class="compare">
-            <h3>同品牌方案</h3>
-            <div id="compareList" class="compare-list"></div>
           </div>
         </section>
       </section>
@@ -123,6 +126,6 @@
       </div>
     </div>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="app.js?v=20260701-0035"></script>
+    <script src="app.js?v=20260701-0040"></script>
   </body>
 </html>
