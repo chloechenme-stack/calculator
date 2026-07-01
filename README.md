@@ -43,10 +43,10 @@ http://localhost:8000
 https://chloechenme-stack.github.io
 ```
 
-6. Copy the Client ID into the app, click `Google 登录`, then click `加载 Google Sheet`.
+6. Copy the Client ID into the app, then click `加载 Google Sheet`.
 
-The app requests read-only access:
+The app requests Google Sheets read/write access so it can write selected input quantities to the configured sheet row and read the calculated result back:
 
 ```text
-https://www.googleapis.com/auth/spreadsheets.readonly
+https://www.googleapis.com/auth/spreadsheets
 ```
