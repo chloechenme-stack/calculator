@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>DMG Price Calculator</title>
-    <link rel="stylesheet" href="styles.css?v=20260702-0011">
+    <link rel="stylesheet" href="styles.css?v=20260702-0017">
   </head>
   <body>
     <main class="shell">
@@ -134,8 +134,8 @@
                 <span>Battery</span>
                 <select id="compareBattery">
                   <option value="same">Same</option>
-                  <option value="plus1">±1</option>
-                  <option value="plus2">±2</option>
+                  <option value="plus1">±5kWh</option>
+                  <option value="plus2">±10kWh</option>
                   <option value="any">Any</option>
                 </select>
               </label>
@@ -155,7 +155,6 @@
                   <option value="closest">Closest match</option>
                   <option value="lowest">Lowest price</option>
                   <option value="capacity">Highest battery capacity</option>
-                  <option value="value">Best value $/kWh</option>
                 </select>
               </label>
               <label id="compareMinField" class="compare-filter hidden">
@@ -191,6 +190,6 @@
       </div>
     </div>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="app.js?v=20260702-0011"></script>
+    <script src="app.js?v=20260702-0017"></script>
   </body>
 </html>
