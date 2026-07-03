@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>DMG Price Calculator</title>
-    <link rel="stylesheet" href="styles.css?v=20260702-0017">
+    <link rel="stylesheet" href="styles.css?v=20260703-0009">
   </head>
   <body>
     <main class="shell">
@@ -108,25 +108,29 @@
               </div>
             </div>
             <div class="compare-filters">
-              <label class="compare-filter compare-phase">
-                <span>Phase</span>
-                <strong id="comparePhase">Single phase (locked)</strong>
-              </label>
-              <label class="compare-filter">
+              <div class="compare-filter">
+                <span>Price mode</span>
+                <div class="price-mode-toggle" role="group" aria-label="Price mode">
+                  <label>
+                    <input type="radio" name="comparePriceMode" value="sheet">
+                    <span>Sheet Price</span>
+                  </label>
+                  <label>
+                    <input type="radio" name="comparePriceMode" value="lowest" checked>
+                    <span>Lowest Price</span>
+                  </label>
+                </div>
+              </div>
+              <div class="compare-filter">
                 <span>Brand</span>
-                <select id="compareBrand">
-                  <option>All</option>
-                  <option>GoodWe</option>
-                  <option>Sigenergy</option>
-                  <option>Alpha</option>
-                  <option>FoxESS</option>
-                </select>
-              </label>
+                <div id="compareBrand" class="compare-brand-picker" role="group" aria-label="Brand"></div>
+              </div>
               <label class="compare-filter">
                 <span>Inverter</span>
                 <select id="compareInverter">
-                  <option value="same">Same</option>
+                  <option value="same" selected>Same</option>
                   <option value="plus5">±5kW</option>
+                  <option value="plus10">±10kW</option>
                   <option value="any">Any</option>
                 </select>
               </label>
@@ -134,17 +138,17 @@
                 <span>Battery</span>
                 <select id="compareBattery">
                   <option value="same">Same</option>
-                  <option value="plus1">±5kWh</option>
-                  <option value="plus2">±10kWh</option>
-                  <option value="any">Any</option>
+                  <option value="plus1">±1</option>
+                  <option value="plus2">±2</option>
+                  <option value="plus3">±3</option>
                 </select>
               </label>
               <label class="compare-filter">
                 <span>Price</span>
                 <select id="comparePrice">
-                  <option value="any">Any</option>
+                  <option value="any" selected>Any</option>
                   <option value="500">±$500</option>
-                  <option value="1000" selected>±$1000</option>
+                  <option value="1000">±$1000</option>
                   <option value="2000">±$2000</option>
                   <option value="custom">Custom</option>
                 </select>
@@ -190,6 +194,6 @@
       </div>
     </div>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="app.js?v=20260702-0017"></script>
+    <script src="app.js?v=20260703-0009"></script>
   </body>
 </html>
