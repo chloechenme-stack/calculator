@@ -1845,6 +1845,21 @@ function applyInverterTariffNote(product, notes) {
   return `${cleaned}\n\n${tariffNote}`;
 }
 
+function alignBrandFooterNotes(notes) {
+  let aligned = notes
+    .replace(/\n\* DMG recent installation projects:\nhttps:\/\/dmgsolar\.com\.au\/installations\/\n?/g, "\n")
+    .replace(/\n{3,}/g, "\n\n");
+
+  if (!aligned.includes("* 10-Year Workmanship Warranty Included with Local DMG After-Sales Support")) {
+    aligned = aligned.replace(
+      "\n* DMG in-house installation team:",
+      "\n* 10-Year Workmanship Warranty Included with Local DMG After-Sales Support\n* DMG in-house installation team:"
+    );
+  }
+
+  return aligned;
+}
+
 function evChargerDetailsFromPrice(price) {
   let remaining = Math.round(Number(price || 0));
   const details = [];
@@ -1910,6 +1925,7 @@ function excelBrandNotes(product, result) {
     );
   }
   notes = applyInverterTariffNote(product, notes);
+  notes = alignBrandFooterNotes(notes);
   return notes;
 }
 
