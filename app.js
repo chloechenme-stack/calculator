@@ -1779,49 +1779,184 @@ ${profile.width}W x ${profile.depth}D x ${option.height}H mm.`;
   );
 }
 
-function buildQuoteText(product, result) {
+function quoteExtraQty(key) {
+  return controlQty(`${key}Qty`);
+}
+
+function quoteSolarLabel(solarSize) {
+  return quoteSizeLabel(solarSize);
+}
+
+function quoteBatteryLabel(batterySize) {
+  return quoteSizeLabel(batterySize);
+}
+
+function quoteSizeLabel(size) {
+  const value = Number(size || 0);
+  if (!value) return "";
+  const nearestInteger = Math.round(value);
+  if (Math.abs(value - nearestInteger) <= 0.15) return String(nearestInteger);
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+function quoteInverterLabel(product) {
+  const size = inverterSizeKw(product);
+  const brand = product.brand === "Sigenergy" ? "SigEn" : product.brand;
+  return `${brand} ${size || ""}kW Inverter`.replace(/\s+/g, " ").trim();
+}
+
+function quoteSystemDescription(product, result) {
+  if (product.isEvCharger) return `${product.inverter} Installation`;
+
+  const solar = quoteSolarLabel(result.solarSize);
+  const battery = quoteBatteryLabel(result.batterySize);
+  const system = `${quoteInverterLabel(product)}+${battery}kWh`;
+  const backup = quoteExtraQty("backup") > 0 || quoteExtraQty("wholeHome") > 0 ? "+Backup" : "";
+
+  if (solar) return `${solar}kW PV+${system} Battery${backup}`;
+  return `${$("dcCoupled")?.checked ? "DC Coupled" : "AC Coupled"}: ${system}${backup}`;
+}
+
+function quoteInverterTariffNote(product) {
+  const size = inverterSizeKw(product);
+  if (!size) return "";
+  if (size <= 5) return "* 5kW Inverter: eligible for Synergy Feed-in tariffs";
+  return `* Over 5kW Inverter:
+ - Export limit 1.5kw rule apply
+ - Not eligible for Synergy Feed-in tariffs
+ - Subject to Western Power approval`;
+}
+
+function applyInverterTariffNote(product, notes) {
+  const tariffNote = quoteInverterTariffNote(product);
+  let cleaned = notes
+    .replace(/\n\* Over 5kW Inverter:\n(?: ?- .+\n?)+/g, "\n")
+    .replace(/\n\* 5kW Inverter: eligible for Synergy Feed-in tariffs\n?/g, "\n")
+    .replace(/\n{3,}/g, "\n\n");
+
+  if (!tariffNote) return cleaned;
+  if (cleaned.includes("* Off Peak Charging feature available")) {
+    return cleaned.replace(
+      "* Off Peak Charging feature available",
+      `* Off Peak Charging feature available\n${tariffNote}`
+    );
+  }
+  return `${cleaned}\n\n${tariffNote}`;
+}
+
+function evChargerDetailsFromPrice(price) {
+  let remaining = Math.round(Number(price || 0));
+  const details = [];
+
+  if (remaining >= 1995) {
+    details.push("Charger+Install: $1,995");
+    remaining -= 1995;
+  } else if (remaining >= 800) {
+    details.push("Install-only: $800");
+    remaining -= 800;
+  } else if (remaining >= 300) {
+    details.push("Call-out if seperate install: $300");
+    remaining -= 300;
+  }
+
+  [
+    [500, "Double Storey: $500"],
+    [440, "External Enclosure: $440"],
+    [300, "Call-out if seperate install: $300"],
+    [200, "3P: $200"]
+  ].forEach(([amount, label]) => {
+    if (remaining >= amount) {
+      details.push(label);
+      remaining -= amount;
+    }
+  });
+
+  return details;
+}
+
+function selectedEvChargerDescription(product) {
+  if (product.isEvCharger) {
+    const details = evChargerDetailsFromPrice(product.basePrice || 1995);
+    if (quoteExtraQty("ev3p") > 0) details.push("3P: $200");
+    if (quoteExtraQty("evDouble") > 0) details.push("Double Storey: $500");
+    if (quoteExtraQty("evEnclosure") > 0) details.push("External Enclosure: $440");
+    if (quoteExtraQty("evCallOut") > 0) details.push("Call-out if seperate install: $300");
+    if (quoteExtraQty("evInstallOnly") > 0) details.push("Install-only: $800");
+    return details.length ? `* EV Charger Installation\n(${[...new Set(details)].join("; ")})` : "";
+  }
+
+  const selected = [];
+  [
+    ["tesla", "Tesla EV Charger"],
+    ["sigEv", product.brand === "Sigenergy" ? "Sigenergy DC EV 12.5kW Charger" : "Sigenergy AC EV Charger"]
+  ].forEach(([key, label]) => {
+    if (quoteExtraQty(key) <= 0) return;
+    const details = evChargerDetailsFromPrice(controlNum(`${key}Price`));
+    selected.push(`* ${label} Installation Included\n(${details.length ? details.join("; ") : "EV charger selected"})`);
+  });
+  return selected.join("\n");
+}
+
+function excelBrandNotes(product, result) {
   const noteKey = product.brand === "Sigenergy" ? "Sigenergy" : product.brand;
   const baseNotes = pylonNotes[noteKey] || generalPylonNotes.join("\n");
-  const notes = notesWithConfiguredDimensions(product, result, baseNotes);
-  const extraLines = activeExtraDefs(product)
-    .map(([key, label]) => ({ label: extraLabel(key, label), qty: controlQty(key + "Qty"), price: controlNum(key + "Price") }))
-    .filter((item) => item.qty > 0 && item.price > 0)
-    .map((item) => `- ${item.label}: ${item.qty} x ${fmt(item.price)} = ${fmt(item.qty * item.price)}`);
-  const extrasText = extraLines.length ? extraLines.join("\n") : "- No selected extras";
-  const systemLines = product.isEvCharger
-    ? [
-      `- ${product.inverter}`,
-      `- Quantity: ${controlQty("batteryQty")}`,
-      `- Wholesaler: ${product.wholesaler}`
-    ]
-    : [
-      `- ${result.solarSize.toFixed(2)}kW PV + ${product.inverter}`,
-      `- Battery: ${product.battery} (${result.batterySize.toFixed(1)}kWh)`,
-      `- Wholesaler: ${product.wholesaler}`
-    ];
-  const sheetPriceLines = result.sheetFinal
-    ? [
-      `- Total price inc. GST: ${fmt(result.final)}`,
-      `- ${result.sheetPriceNote}`
-    ]
-    : [
-      `- System price after eligible rebates: ${fmt(result.baseSell)}`,
-      `- Promotional minimum price: ${fmt(result.promoFloor)}${result.promoApplied ? " (applied)" : ""}`,
-      `- Selected extras: ${fmt(result.extras)}`,
-      `- Total price inc. GST: ${fmt(result.final)}`
-    ];
+  let notes = notesWithConfiguredDimensions(product, result, baseNotes);
+  const hasSelectedEvCharger = quoteExtraQty("tesla") > 0 || quoteExtraQty("sigEv") > 0;
+  if (hasSelectedEvCharger) {
+    notes = notes.replace(
+      /\n\* EV Charger Installation Optional\n\([^)]+\)\n?/,
+      "\n"
+    );
+  }
+  notes = applyInverterTariffNote(product, notes);
+  return notes;
+}
 
-  return `System:
-${systemLines.join("\n")}
+function excelDescriptionLines(product) {
+  const lines = [];
 
-Price:
-${sheetPriceLines.join("\n")}
+  if (quoteExtraQty("removal") > 0) lines.push("* Panel Removal & Disposal");
+  if (quoteExtraQty("rewiring") > 0) lines.push("* Panel Rewiring to New Hybrid Inverter");
+  if (quoteExtraQty("enclosure8") > 0 || quoteExtraQty("enclosure12") > 0) {
+    lines.push("* External Enclosure Box (if needed)");
+  }
 
-Extras:
-${extrasText}
+  if (quoteExtraQty("switch") > 0) {
+    lines.push("* Switchboard upgrade required due to asbestos compliance");
+  }
 
-Important notes:
-${notes}`;
+  if (quoteExtraQty("backup") > 0) {
+    lines.push("* Blackout Protection for Essential Loads Included\n(Backup for 2 selected circuits, usually the fridge and lights)");
+  } else {
+    lines.push("* Blackout Protection NOT Included\n(Optional essential-load backup: $600 for 2 circuits, usually fridge and lights)");
+  }
+
+  if (quoteExtraQty("wholeHome") > 0) {
+    lines.push("* Blackout Protection for Full-house Backup Included for $2,000 with\n(Backup for 2 selected circuits, usually the fridge and lights)");
+  } else if (product.brand === "Sigenergy") {
+    lines.push("* Blackout Protection NOT Included\n(Optional Full-house backup: $2,000 for extra Sigenergy Gateway Box)");
+  }
+
+  const evDescription = selectedEvChargerDescription(product);
+  if (evDescription) lines.push(evDescription);
+
+  const productNote = cleanText(product.productNote);
+  if (/hws|hot water/i.test(productNote)) {
+    lines.push("* Customer to ensure solar HWS is removed prior to install");
+    lines.push("* Removal & disposal of gas hot water system;\nInstallation of electric hot water system");
+  }
+
+  return lines;
+}
+
+function buildQuoteText(product, result) {
+  const extraDescription = excelDescriptionLines(product).join("\n");
+  return [
+    quoteSystemDescription(product, result),
+    extraDescription,
+    excelBrandNotes(product, result)
+  ].filter(Boolean).join("\n\n");
 }
 
 function selectProduct(index) {
