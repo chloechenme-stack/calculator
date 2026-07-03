@@ -751,6 +751,7 @@ dd {
   margin-top: 5px;
   color: #334155;
   font-weight: 800;
+  white-space: pre-line;
 }
 
 @media (max-width: 900px) {

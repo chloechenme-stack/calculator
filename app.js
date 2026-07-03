@@ -1416,11 +1416,14 @@ function priceDiffLabel(diff) {
 }
 
 function compareExtrasSummary(valuesByField, product) {
-  return extraDefs
-    .map(([key, label]) => ({ key, label: extraLabel(key, label), qty: valuesByField[key] || 0 }))
-    .filter((item) => item.qty > 0)
-    .map((item) => `${item.label} x${item.qty}`)
-    .join(", ") || "No selected extras";
+  return excelDescriptionLines(product, valuesByField).join("\n") || "No selected extras";
+}
+
+function compareQuoteTitle(candidate) {
+  return quoteSystemDescription(candidate.product, {
+    solarSize: candidate.solar,
+    batterySize: candidate.batteryCapacity
+  }, candidate.compareValues);
 }
 
 function scheduleCompareSheetCalculations(baseProduct, options = {}) {
@@ -1779,8 +1782,8 @@ ${profile.width}W x ${profile.depth}D x ${option.height}H mm.`;
   );
 }
 
-function quoteExtraQty(key) {
-  return controlQty(`${key}Qty`);
+function quoteExtraQty(key, valuesByField = null) {
+  return valuesByField ? Number(valuesByField[key] || 0) : controlQty(`${key}Qty`);
 }
 
 function quoteSolarLabel(solarSize) {
@@ -1788,7 +1791,8 @@ function quoteSolarLabel(solarSize) {
 }
 
 function quoteBatteryLabel(batterySize) {
-  return quoteSizeLabel(batterySize);
+  const value = Number(batterySize || 0);
+  return value ? String(Math.round(value)) : "";
 }
 
 function quoteSizeLabel(size) {
@@ -1806,13 +1810,13 @@ function quoteInverterLabel(product) {
   return `${brand} ${size || ""}kW Inverter`.replace(/\s+/g, " ").trim();
 }
 
-function quoteSystemDescription(product, result) {
+function quoteSystemDescription(product, result, valuesByField = null) {
   if (product.isEvCharger) return `${product.inverter} Installation`;
 
   const solar = quoteSolarLabel(result.solarSize);
   const battery = quoteBatteryLabel(result.batterySize);
   const system = `${quoteInverterLabel(product)}+${battery}kWh`;
-  const backup = quoteExtraQty("backup") > 0 || quoteExtraQty("wholeHome") > 0 ? "+Backup" : "";
+  const backup = quoteExtraQty("backup", valuesByField) > 0 || quoteExtraQty("wholeHome", valuesByField) > 0 ? "+Backup" : "";
 
   if (solar) return `${solar}kW PV+${system} Battery${backup}`;
   return `${$("dcCoupled")?.checked ? "DC Coupled" : "AC Coupled"}: ${system}${backup}`;
@@ -1890,14 +1894,21 @@ function evChargerDetailsFromPrice(price) {
   return details;
 }
 
-function selectedEvChargerDescription(product) {
+function quoteEvPrice(product, key) {
+  if (!product || products[current] === product) return controlNum(`${key}Price`);
+  if (key === "tesla") return product.teslaEvPrice || product.extraPrices?.tesla || 1995;
+  if (key === "sigEv") return product.sigenergyEvPrice || product.extraPrices?.sigEv || 1995;
+  return product.extraPrices?.[key] || 0;
+}
+
+function selectedEvChargerDescription(product, valuesByField = null) {
   if (product.isEvCharger) {
     const details = evChargerDetailsFromPrice(product.basePrice || 1995);
-    if (quoteExtraQty("ev3p") > 0) details.push("3P: $200");
-    if (quoteExtraQty("evDouble") > 0) details.push("Double Storey: $500");
-    if (quoteExtraQty("evEnclosure") > 0) details.push("External Enclosure: $440");
-    if (quoteExtraQty("evCallOut") > 0) details.push("Call-out if seperate install: $300");
-    if (quoteExtraQty("evInstallOnly") > 0) details.push("Install-only: $800");
+    if (quoteExtraQty("ev3p", valuesByField) > 0) details.push("3P: $200");
+    if (quoteExtraQty("evDouble", valuesByField) > 0) details.push("Double Storey: $500");
+    if (quoteExtraQty("evEnclosure", valuesByField) > 0) details.push("External Enclosure: $440");
+    if (quoteExtraQty("evCallOut", valuesByField) > 0) details.push("Call-out if seperate install: $300");
+    if (quoteExtraQty("evInstallOnly", valuesByField) > 0) details.push("Install-only: $800");
     return details.length ? `* EV Charger Installation\n(${[...new Set(details)].join("; ")})` : "";
   }
 
@@ -1906,18 +1917,18 @@ function selectedEvChargerDescription(product) {
     ["tesla", "Tesla EV Charger"],
     ["sigEv", product.brand === "Sigenergy" ? "Sigenergy DC EV 12.5kW Charger" : "Sigenergy AC EV Charger"]
   ].forEach(([key, label]) => {
-    if (quoteExtraQty(key) <= 0) return;
-    const details = evChargerDetailsFromPrice(controlNum(`${key}Price`));
+    if (quoteExtraQty(key, valuesByField) <= 0) return;
+    const details = evChargerDetailsFromPrice(quoteEvPrice(product, key));
     selected.push(`* ${label} Installation Included\n(${details.length ? details.join("; ") : "EV charger selected"})`);
   });
   return selected.join("\n");
 }
 
-function excelBrandNotes(product, result) {
+function excelBrandNotes(product, result, valuesByField = null) {
   const noteKey = product.brand === "Sigenergy" ? "Sigenergy" : product.brand;
   const baseNotes = pylonNotes[noteKey] || generalPylonNotes.join("\n");
   let notes = notesWithConfiguredDimensions(product, result, baseNotes);
-  const hasSelectedEvCharger = quoteExtraQty("tesla") > 0 || quoteExtraQty("sigEv") > 0;
+  const hasSelectedEvCharger = quoteExtraQty("tesla", valuesByField) > 0 || quoteExtraQty("sigEv", valuesByField) > 0;
   if (hasSelectedEvCharger) {
     notes = notes.replace(
       /\n\* EV Charger Installation Optional\n\([^)]+\)\n?/,
@@ -1929,32 +1940,32 @@ function excelBrandNotes(product, result) {
   return notes;
 }
 
-function excelDescriptionLines(product) {
+function excelDescriptionLines(product, valuesByField = null) {
   const lines = [];
 
-  if (quoteExtraQty("removal") > 0) lines.push("* Panel Removal & Disposal");
-  if (quoteExtraQty("rewiring") > 0) lines.push("* Panel Rewiring to New Hybrid Inverter");
-  if (quoteExtraQty("enclosure8") > 0 || quoteExtraQty("enclosure12") > 0) {
+  if (quoteExtraQty("removal", valuesByField) > 0) lines.push("* Panel Removal & Disposal");
+  if (quoteExtraQty("rewiring", valuesByField) > 0) lines.push("* Panel Rewiring to New Hybrid Inverter");
+  if (quoteExtraQty("enclosure8", valuesByField) > 0 || quoteExtraQty("enclosure12", valuesByField) > 0) {
     lines.push("* External Enclosure Box (if needed)");
   }
 
-  if (quoteExtraQty("switch") > 0) {
+  if (quoteExtraQty("switch", valuesByField) > 0) {
     lines.push("* Switchboard upgrade required due to asbestos compliance");
   }
 
-  if (quoteExtraQty("backup") > 0) {
+  if (quoteExtraQty("backup", valuesByField) > 0) {
     lines.push("* Blackout Protection for Essential Loads Included\n(Backup for 2 selected circuits, usually the fridge and lights)");
   } else {
     lines.push("* Blackout Protection NOT Included\n(Optional essential-load backup: $600 for 2 circuits, usually fridge and lights)");
   }
 
-  if (quoteExtraQty("wholeHome") > 0) {
+  if (quoteExtraQty("wholeHome", valuesByField) > 0) {
     lines.push("* Blackout Protection for Full-house Backup Included for $2,000 with\n(Backup for 2 selected circuits, usually the fridge and lights)");
   } else if (product.brand === "Sigenergy") {
     lines.push("* Blackout Protection NOT Included\n(Optional Full-house backup: $2,000 for extra Sigenergy Gateway Box)");
   }
 
-  const evDescription = selectedEvChargerDescription(product);
+  const evDescription = selectedEvChargerDescription(product, valuesByField);
   if (evDescription) lines.push(evDescription);
 
   const productNote = cleanText(product.productNote);
@@ -2010,6 +2021,7 @@ function renderCompare(baseProduct, options = {}) {
     const priceModeLabel = `<span class="promo-label">${escapeHtml(comparePriceModeLabel())}</span>`;
     const rowLabel = p.sheetRowNumber ? ` (Row ${p.sheetRowNumber})` : "";
     const extrasLabel = compareExtrasSummary(compareValues, p);
+    const quoteTitle = `${compareQuoteTitle(candidate)}${rowLabel}`;
     return `<button class="compare-card${active}" type="button" data-index="${index}">
       <div class="compare-card-top">
         <span class="compare-brand">${escapeHtml(p.brand)}</span>
@@ -2020,7 +2032,7 @@ function renderCompare(baseProduct, options = {}) {
         ${priceModeLabel}
         <span class="promo-label">Match score: ${score}%</span>
       </div>
-      <strong class="compare-product">${escapeHtml(`${p.inverter}${rowLabel}`)}</strong>
+      <strong class="compare-product">${escapeHtml(quoteTitle)}</strong>
       <span>Inverter size: ${escapeHtml(`${inverterSize || 0}kW`)}</span>
       <span>Battery count: ${escapeHtml(batteryQty)}</span>
       <span>Battery capacity: ${escapeHtml(batteryCapacity.toFixed(1))} kWh</span>
