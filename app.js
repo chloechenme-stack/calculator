@@ -1233,6 +1233,20 @@ function inverterSizeKw(product) {
   return match ? Math.round(Number(match[1]) / 5) * 5 : 0;
 }
 
+function inverterModelLabel(product) {
+  const value = cleanText(product?.inverter);
+  if (!value) return "";
+
+  const parts = value.split("/").map(cleanText).filter(Boolean);
+  if (parts.length > 1) return parts[parts.length - 1];
+  if (/\d+(?:\.\d+)?\s*kW/i.test(value)) return "";
+
+  const brand = cleanText(product?.brand);
+  return brand && value.toLowerCase().startsWith(brand.toLowerCase())
+    ? cleanText(value.slice(brand.length))
+    : value;
+}
+
 function inverterPhase(product) {
   const value = String(product?.inverter || "").toLowerCase();
   if (/\b3\s*p\b|\b3\s*phase\b|three\s*phase/.test(value)) return "3P";
@@ -1317,7 +1331,11 @@ function compareCandidateForProduct(baseProduct, product, index, anchor, battery
   const sheetPrice = active ? anchor.sheetPrice : compareFinal ?? sheetFinal ?? estimate.final;
   const displayPrice = displayPriceForMode(sheetPrice);
   const batteryQty = batteryQtyOverride;
-  const panelQty = active ? controlQty("panelQty") : configPanelQty(product);
+  const panelQty = product.isEvCharger
+    ? 0
+    : active
+    ? controlQty("panelQty")
+    : compareValues.panelQty ?? configPanelQty(product);
   const batteryCapacity = product.isEvCharger ? 0 : batteryQty * (product.batUnit || 0);
   const solar = product.isEvCharger ? 0 : panelQty * 475 / 1000;
   const inverterSize = inverterSizeKw(product);
@@ -1680,9 +1698,9 @@ function update(options = {}) {
   }
   const result = calculate(product);
   const detailValue = (value) => value === null ? "不使用" : fmt(value);
-  $("wholesaler").textContent = product.wholesaler;
-  $("quoteTitle").textContent = product.inverter;
-  $("batteryName").textContent = product.battery;
+  $("wholesaler").classList.add("hidden");
+  $("quoteTitle").textContent = quoteSystemDescription(product, result);
+  $("batteryName").textContent = [product.inverter, product.battery].filter(Boolean).join("\n");
   $("finalPrice").textContent = fmt(result.final);
   $("batterySize").textContent = `${result.batterySize.toFixed(1)} kWh`;
   $("solarSize").textContent = `${result.solarSize.toFixed(2)} kW`;
@@ -1953,15 +1971,18 @@ function excelDescriptionLines(product, valuesByField = null) {
     lines.push("* Switchboard upgrade required due to asbestos compliance");
   }
 
-  if (quoteExtraQty("backup", valuesByField) > 0) {
+  const hasEssentialBackup = quoteExtraQty("backup", valuesByField) > 0;
+  const hasWholeHomeBackup = quoteExtraQty("wholeHome", valuesByField) > 0;
+
+  if (hasEssentialBackup) {
     lines.push("* Blackout Protection for Essential Loads Included\n(Backup for 2 selected circuits, usually the fridge and lights)");
-  } else {
+  } else if (!hasWholeHomeBackup) {
     lines.push("* Blackout Protection NOT Included\n(Optional essential-load backup: $600 for 2 circuits, usually fridge and lights)");
   }
 
-  if (quoteExtraQty("wholeHome", valuesByField) > 0) {
+  if (hasWholeHomeBackup) {
     lines.push("* Blackout Protection for Full-house Backup Included for $2,000 with\n(Backup for 2 selected circuits, usually the fridge and lights)");
-  } else if (product.brand === "Sigenergy") {
+  } else if (product.brand === "Sigenergy" && !hasEssentialBackup) {
     lines.push("* Blackout Protection NOT Included\n(Optional Full-house backup: $2,000 for extra Sigenergy Gateway Box)");
   }
 
@@ -2019,7 +2040,8 @@ function renderCompare(baseProduct, options = {}) {
     const active = index === current ? " active" : "";
     const promoLabel = estimate.promoApplied ? `<span class="promo-label">促销最低价</span>` : "";
     const priceModeLabel = `<span class="promo-label">${escapeHtml(comparePriceModeLabel())}</span>`;
-    const rowLabel = p.sheetRowNumber ? ` (Row ${p.sheetRowNumber})` : "";
+    const rowLabel = comparePriceMode() === "sheet" && p.sheetRowNumber ? ` (Row ${p.sheetRowNumber})` : "";
+    const inverterLabel = [`${inverterSize || 0}kW`, inverterModelLabel(p)].filter(Boolean).join(" ");
     const extrasLabel = compareExtrasSummary(compareValues, p);
     const quoteTitle = `${compareQuoteTitle(candidate)}${rowLabel}`;
     return `<button class="compare-card${active}" type="button" data-index="${index}">
@@ -2033,11 +2055,11 @@ function renderCompare(baseProduct, options = {}) {
         <span class="promo-label">Match score: ${score}%</span>
       </div>
       <strong class="compare-product">${escapeHtml(quoteTitle)}</strong>
-      <span>Inverter size: ${escapeHtml(`${inverterSize || 0}kW`)}</span>
+      <span>Inverter size: ${escapeHtml(inverterLabel)}</span>
+      <span>Battery: ${escapeHtml(p.battery)}</span>
       <span>Battery count: ${escapeHtml(batteryQty)}</span>
       <span>Battery capacity: ${escapeHtml(batteryCapacity.toFixed(1))} kWh</span>
       <span>Price difference: ${escapeHtml(priceDiffLabel(priceDiff))}</span>
-      <span>Battery: ${escapeHtml(p.battery)}</span>
       <span class="compare-extras">${escapeHtml(extrasLabel)}</span>
     </button>`;
   }).join("");
