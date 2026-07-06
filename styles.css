@@ -370,6 +370,12 @@ input:focus {
   text-align: right;
 }
 
+.extra-item input[readonly] {
+  color: var(--muted);
+  background: #f7f9fc;
+  cursor: default;
+}
+
 .ev-extra-item {
   cursor: pointer;
 }

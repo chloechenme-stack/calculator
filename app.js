@@ -79,6 +79,8 @@ const extraDefs = [
   ["enclosure12", "External Enclosure Box 12 POLE", 636]
 ];
 
+const editableExtraPriceKeys = new Set(["switch", "tesla", "sigEv"]);
+
 const evChargerExtras = [
   ["ev3p", "3p", 200],
   ["evDouble", "Double Storey", 500],
@@ -491,6 +493,7 @@ function columnIndexToLetters(index) {
 function buildHeaderMap(headers) {
   const normalized = headers.map(normalizeHeader);
   const hasColumn = (letters) => columnLettersToIndex(letters) < normalized.length;
+  const isQtyHeader = (header) => header === "QTY" || header === "QUANTITY" || header.includes("QTY");
   const find = (...patterns) => {
     const wanted = patterns.map((pattern) => pattern.map((word) => word.toUpperCase()));
     const index = normalized.findIndex((header) => wanted.some((words) => words.every((word) => header.includes(word))));
@@ -504,12 +507,26 @@ function buildHeaderMap(headers) {
       return labelColumn;
     }
     for (let index = labelIndex + 1; index < Math.min(normalized.length, labelIndex + 5); index += 1) {
-      if (normalized[index] === "QTY" || normalized[index] === "QUANTITY" || normalized[index].includes("QTY")) {
+      if (isQtyHeader(normalized[index])) {
         return columnIndexToLetters(index);
       }
     }
     return "";
   };
+  const findPriceNear = (...patterns) => {
+    const labelColumn = find(...patterns);
+    if (!labelColumn) return "";
+    const labelIndex = columnLettersToIndex(labelColumn);
+    return isQtyHeader(normalized[labelIndex]) && labelIndex > 0
+      ? columnIndexToLetters(labelIndex - 1)
+      : labelColumn;
+  };
+  const extraColumns = (...patterns) => ({
+    price: findPriceNear(...patterns),
+    qty: findQtyNear(...patterns)
+  });
+
+  const switchboard = extraColumns(["SWITCHBOARD"]);
 
   return {
     inverterModel: find(["INVERTER", "MODEL"]),
@@ -521,10 +538,13 @@ function buildHeaderMap(headers) {
     removal: findQtyNear(["PANEL", "REMOVAL"], ["REMOVAL"]),
     rewiring: findQtyNear(["PANEL", "REWIRING"], ["REWIRING"]),
     double: findQtyNear(["DOUBLE", "STOREY"], ["EXTRAS", "DOUBLE"]),
-    switch: findQtyNear(["SWITCHBOARD"]),
+    switchPrice: switchboard.price,
+    switch: switchboard.qty,
     backup: findQtyNear(["ESSENTIAL", "LOADS", "BACKUP"]),
     wholeHome: findQtyNear(["WHOLE", "HOUSE", "BACKUP"], ["FULL", "HOME", "BACKUP"]),
+    teslaPrice: hasColumn("AO") ? "AO" : findPriceNear(["TESLA", "EV", "CHARGER"]),
     tesla: hasColumn("AP") ? "AP" : findQtyNear(["TESLA", "EV", "CHARGER"]),
+    sigEvPrice: hasColumn("AQ") ? "AQ" : findPriceNear(["SIGENERGY", "AC", "EV"], ["SIGENERGY", "EV"]),
     sigEv: hasColumn("AR") ? "AR" : findQtyNear(["SIGENERGY", "AC", "EV"], ["SIGENERGY", "EV"]),
     enclosure8: hasColumn("AT") ? "AT" : findQtyNear(["EXTERNAL", "ENCLOSURE", "BOX", "8"], ["EXTERNAL", "ENCLOSURE", "8", "POLES"]),
     enclosure12: hasColumn("AV") ? "AV" : findQtyNear(["EXTERNAL", "ENCLOSURE", "BOX", "12"], ["EXTERNAL", "ENCLOSURE", "12", "POLE"])
@@ -560,7 +580,7 @@ function activeExtraDefs(product = products[current]) {
 }
 
 function getLeonValuesByField() {
-  return {
+  const values = {
     batteryQty: controlQty("batteryQty"),
     panelQty: controlQty("panelQty"),
     splits: controlQty("splitsQty"),
@@ -576,6 +596,10 @@ function getLeonValuesByField() {
     enclosure8: controlQty("enclosure8Qty"),
     enclosure12: controlQty("enclosure12Qty")
   };
+  editableExtraPriceKeys.forEach((key) => {
+    values[`${key}Price`] = controlNum(`${key}Price`);
+  });
+  return values;
 }
 
 function leonInputKey() {
@@ -614,7 +638,7 @@ async function writeLeonRowInputs(rowNumber, valuesByField) {
   const data = leonRowInputData(rowNumber, valuesByField);
 
   if (!data.length) {
-    throw new Error("没有从第 3 行表头识别到可写入的数量列。");
+    throw new Error("没有从第 3 行表头识别到可写入的价格/数量列。");
   }
 
   return writeGoogleValues(activeSheetContext.spreadsheetId, data);
@@ -624,7 +648,7 @@ async function writeLeonRowsInputs(rowNumbers, valuesByField) {
   if (!activeSheetContext) throw new Error("还没有加载 Leon Sales sheet。");
   const data = rowNumbers.flatMap((rowNumber) => leonRowInputData(rowNumber, valuesByField));
   if (!data.length) {
-    throw new Error("没有从第 3 行表头识别到可写入的数量列。");
+    throw new Error("没有从第 3 行表头识别到可写入的价格/数量列。");
   }
   return writeGoogleValues(activeSheetContext.spreadsheetId, data);
 }
@@ -633,7 +657,7 @@ async function writeLeonRowsInputEntries(entries) {
   if (!activeSheetContext) throw new Error("还没有加载 Leon Sales sheet。");
   const data = entries.flatMap((entry) => leonRowInputData(entry.rowNumber, entry.valuesByField));
   if (!data.length) {
-    throw new Error("没有从第 3 行表头识别到可写入的数量列。");
+    throw new Error("没有从第 3 行表头识别到可写入的价格/数量列。");
   }
   return writeGoogleValues(activeSheetContext.spreadsheetId, data);
 }
@@ -1602,7 +1626,11 @@ function applyProductRestrictions(product) {
     [qty, price].forEach((element) => {
       if (!element) return;
       element.disabled = isDisabled;
-      element.title = isDisabled ? "Disabled by product note" : "";
+      element.title = isDisabled
+        ? "Disabled by product note"
+        : element.readOnly
+          ? "Only Switchboard, Tesla EV Charger, and Sigenergy AC EV Charger prices can be edited"
+          : "";
     });
     item?.classList.toggle("extra-item-disabled", isDisabled);
   });
@@ -1621,7 +1649,7 @@ function renderExtras() {
     <div class="extra-item" data-extra-key="${key}">
       <label class="extra-price-field">
         <strong class="extra-label">${escapeHtml(extraLabel(key, label))}</strong>
-        <input id="${key}Price" type="number" min="0" step="1" value="${price}" aria-label="${escapeHtml(extraLabel(key, label))} price">
+        <input id="${key}Price" type="number" min="0" step="1" value="${price}" ${editableExtraPriceKeys.has(key) ? "" : "readonly"} aria-label="${escapeHtml(extraLabel(key, label))} price">
       </label>
       <input class="extra-qty" id="${key}Qty" type="number" min="0" step="1" value="0" aria-label="${escapeHtml(extraLabel(key, label))} quantity">
     </div>
