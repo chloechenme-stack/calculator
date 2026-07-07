@@ -52,6 +52,7 @@ let sheetSyncVersion = 0;
 let compareSyncTimer = null;
 let compareSyncVersion = 0;
 let compareResultsReady = false;
+let priceCopiedTimer = null;
 
 function isProductAvailable(product) {
   return product && !TEMP_DISABLED_BRANDS.has(product.brand);
@@ -2621,12 +2622,53 @@ document.querySelectorAll('input[name="quoteFinance"]').forEach((input) => {
     update({ skipSheetSync: true });
   });
 });
+
+async function copyTextToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand("copy");
+    textarea.remove();
+    return copied;
+  }
+}
+
+async function copyFinalPrice() {
+  const price = $("finalPrice")?.textContent.trim();
+  if (!price) return;
+  const copied = await copyTextToClipboard(price);
+  if (!copied) return;
+  const note = $("priceNote");
+  const previousNote = note?.textContent || "";
+  if (priceCopiedTimer) clearTimeout(priceCopiedTimer);
+  if (note) note.textContent = "Price copied";
+  priceCopiedTimer = setTimeout(() => {
+    if (note) note.textContent = previousNote;
+  }, 1200);
+}
+
+$("finalPrice")?.addEventListener("click", copyFinalPrice);
+$("finalPrice")?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  copyFinalPrice();
+});
+
 $("copyQuoteBtn").addEventListener("click", async () => {
   const text = $("quoteText").value;
   try {
-    await navigator.clipboard.writeText(text);
-    $("copyQuoteBtn").textContent = "Copied";
-    setTimeout(() => $("copyQuoteBtn").textContent = "Copy", 1200);
+    if (await copyTextToClipboard(text)) {
+      $("copyQuoteBtn").textContent = "Copied";
+      setTimeout(() => $("copyQuoteBtn").textContent = "Copy", 1200);
+    }
   } catch {
     $("quoteText").select();
     document.execCommand("copy");
