@@ -4,51 +4,51 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>DMG Price Calculator</title>
-    <link rel="stylesheet" href="styles.css?v=20260706-0021">
+    <link rel="stylesheet" href="styles.css?v=20260707-0001">
   </head>
   <body>
     <main class="shell">
       <section class="source-panel panel">
         <label class="field">
           <span>Google OAuth Client ID</span>
-          <input id="googleClientId" type="text" placeholder="粘贴 Google OAuth Client ID">
+          <input id="googleClientId" type="text" placeholder="Paste Google OAuth Client ID">
         </label>
         <label class="field">
-          <span>Google Sheet 数据源</span>
+          <span>Google Sheet source</span>
           <input id="sheetUrl" type="url" value="https://docs.google.com/spreadsheets/d/1mDvDIHcHQgH8_BkguTExC2pBUKJeaBYft3yROmVHu34/edit?gid=959073985#gid=959073985">
         </label>
         <div class="source-actions">
-          <button id="loadSheetBtn" type="button">加载 Google Sheet</button>
+          <button id="loadSheetBtn" type="button">Load Google Sheet</button>
         </div>
-        <p id="sourceStatus" class="source-status">当前使用内置数据</p>
+        <p id="sourceStatus" class="source-status">Using built-in data</p>
       </section>
 
       <section class="workspace">
         <aside class="panel controls">
           <div class="brand-block">
             <p class="eyebrow">DMG Solar</p>
-            <h1>价格计算器</h1>
+            <h1>Price Calculator</h1>
           </div>
 
           <label class="field">
-            <span>品牌</span>
+            <span>Brand</span>
             <select id="brandSelect"></select>
           </label>
 
           <label class="field">
-            <span>产品方案</span>
+            <span>Product option</span>
             <select id="productSelect"></select>
           </label>
           <div id="productNote" class="product-note hidden"></div>
 
           <div class="grid-2">
             <label class="field">
-              <span id="batteryQtyLabel">电池数量</span>
+              <span id="batteryQtyLabel">Battery quantity</span>
               <input id="batteryQty" type="number" min="0" step="1">
               <strong id="batterySize" class="field-stat">0 kWh</strong>
             </label>
             <label id="panelQtyField" class="field">
-              <span>太阳能板数量</span>
+              <span>Panel quantity</span>
               <input id="panelQty" type="number" min="0" step="1">
               <strong id="solarSize" class="field-stat">0 kW</strong>
             </label>
@@ -68,7 +68,7 @@
                 <span>Extras</span>
                 <strong id="extrasTotal">$0</strong>
               </div>
-              <button id="resetExtras" type="button">重置</button>
+              <button id="resetExtras" type="button">Reset</button>
             </div>
           </div>
           <div id="extrasList" class="extras-list"></div>
@@ -78,30 +78,20 @@
           <div class="quote-top">
             <div>
               <p class="eyebrow" id="wholesaler">Wholesaler</p>
-              <h2 id="quoteTitle">请选择方案</h2>
+              <h2 id="quoteTitle">Select an option</h2>
               <p id="batteryName" class="muted"></p>
             </div>
-            <button id="printBtn" class="print-btn" type="button">打印报价</button>
           </div>
 
           <div class="price-card">
-            <p>客户最终价</p>
+            <p id="priceCardLabel">Lowest Price</p>
             <strong id="finalPrice">$0</strong>
-            <span id="priceNote">含 GST，已扣除补贴</span>
-          </div>
-
-          <div class="breakdown">
-            <h3>价格明细</h3>
-            <dl>
-              <div><dt>AW 黄价</dt><dd id="sheetYellowFinal">$0</dd></div>
-              <div><dt>WA Battery rebate</dt><dd id="waRebate">$0</dd></div>
-              <div><dt>Sheet 计算价</dt><dd id="sheetFinal">$0</dd></div>
-            </dl>
+            <span id="priceNote">Including GST, rebates deducted</span>
           </div>
 
           <div class="compare">
             <div class="section-head">
-              <h3>Smart Compare / 相似配置方案</h3>
+              <h3>Smart Compare / Similar Options</h3>
               <div class="compare-actions">
                 <button id="calculateCompareBtn" type="button">Compare</button>
                 <button id="resetCompareBtn" type="button">Reset</button>
@@ -175,25 +165,48 @@
 
           <div class="quote-text">
             <div class="section-head">
-              <h3>可复制报价文字</h3>
-              <button id="copyQuoteBtn" type="button">复制</button>
+              <h3>Copyable Quote Text</h3>
+              <button id="copyQuoteBtn" type="button">Copy</button>
             </div>
-            <textarea id="quoteText" rows="16" spellcheck="false"></textarea>
+            <div class="quote-text-controls">
+              <label class="quote-text-control">
+                <span>Quote text type</span>
+                <select id="quoteTextMode">
+                  <option value="available">Available quote</option>
+                  <option value="main" selected>Main quote</option>
+                  <option value="email">Email text</option>
+                </select>
+              </label>
+              <div id="quoteFinanceControl" class="quote-text-control hidden">
+                <span>Finance</span>
+                <div class="finance-toggle" role="group" aria-label="Finance">
+                  <label>
+                    <input type="radio" name="quoteFinance" value="no" checked>
+                    <span>No</span>
+                  </label>
+                  <label>
+                    <input type="radio" name="quoteFinance" value="yes">
+                    <span>Yes</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <textarea id="quoteText" rows="24" spellcheck="false"></textarea>
           </div>
         </section>
       </section>
     </main>
     <div id="googlePrompt" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="googlePromptTitle">
       <div class="modal">
-        <h2 id="googlePromptTitle">加载 Google Sheet</h2>
-        <p>连接 Leon Sales sheet 后，报价会使用表格公式计算。</p>
+        <h2 id="googlePromptTitle">Load Google Sheet</h2>
+        <p>After connecting the Leon Sales sheet, quotes will use the sheet formulas.</p>
         <div class="modal-actions">
-          <button id="promptLoadSheetBtn" type="button">加载 Google Sheet</button>
-          <button id="promptLaterBtn" type="button">稍后</button>
+          <button id="promptLoadSheetBtn" type="button">Load Google Sheet</button>
+          <button id="promptLaterBtn" type="button">Later</button>
         </div>
       </div>
     </div>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="app.js?v=20260706-0021"></script>
+    <script src="app.js?v=20260707-0001"></script>
   </body>
 </html>

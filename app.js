@@ -44,6 +44,7 @@ const WA_BATTERY_REBATE = 1300;
 const DEFAULT_STC_PRICE = 38;
 const DEFAULT_STC_FACTOR = 6.8;
 const USE_PROMO_FLOOR = true;
+const QUOTE_TITLE_MAX_LENGTH = 42;
 
 let activeSheetContext = null;
 let sheetSyncTimer = null;
@@ -276,6 +277,7 @@ const generalPylonNotes = [
   "* Switchboard upgrade required due to asbestos compliance",
   "* WA REBATE -- Only Eligible for Australian Citizens/PR & Synergy VPP Participants & DC Coupling"
 ];
+const SITE_CONDITION_NOTE = "* Tile/Tin roof, Single/Double storey, 1/3 phase";
 
 const $ = (id) => document.getElementById(id);
 const setText = (id, value) => {
@@ -312,7 +314,7 @@ function setSourceStatus(message, type = "") {
 function parseSheetTarget(input) {
   const url = new URL(input.trim());
   const match = url.pathname.match(/\/spreadsheets\/d\/([^/]+)/);
-  if (!match) throw new Error("Google Sheet 链接格式不正确。");
+  if (!match) throw new Error("Invalid Google Sheet link format.");
   return {
     spreadsheetId: match[1],
     gid: Number(url.searchParams.get("gid") || new URLSearchParams(url.hash.replace(/^#/, "")).get("gid") || 0)
@@ -339,7 +341,7 @@ function waitForGoogleIdentity() {
         resolve();
       } else if (Date.now() - started > 8000) {
         clearInterval(timer);
-        reject(new Error("Google 登录脚本还没加载成功，请刷新页面再试。"));
+        reject(new Error("Google sign-in script has not loaded yet. Please refresh and try again."));
       }
     }, 100);
   });
@@ -348,7 +350,7 @@ function waitForGoogleIdentity() {
 async function requestGoogleAccessToken() {
   const clientId = $("googleClientId").value.trim();
   if (!clientId) {
-    throw new Error("请先填写 Google OAuth Client ID。");
+    throw new Error("Please enter the Google OAuth Client ID first.");
   }
 
   localStorage.setItem("googleClientId", clientId);
@@ -378,7 +380,7 @@ async function fetchGoogleJson(url) {
   });
   const data = await response.json();
   if (!response.ok) {
-    const message = data.error?.message || "Google Sheets API 请求失败。";
+    const message = data.error?.message || "Google Sheets API request failed.";
     throw new Error(message);
   }
   return data;
@@ -413,7 +415,7 @@ async function writeGoogleValues(spreadsheetId, data) {
   });
   const payload = await response.json();
   if (!response.ok) {
-    throw new Error(payload.error?.message || "Google Sheets API 写入失败。");
+    throw new Error(payload.error?.message || "Google Sheets API write failed.");
   }
   return payload;
 }
@@ -431,7 +433,7 @@ async function loadPrivateSheetRows(sheetUrl) {
   const sheet = meta.sheets?.find((item) => item.properties.title === LEON_SHEET_PROFILE.title)
     || meta.sheets?.find((item) => Number(item.properties.sheetId) === gid)
     || meta.sheets?.[0];
-  if (!sheet) throw new Error("找不到这个 spreadsheet 里的工作表。");
+  if (!sheet) throw new Error("Could not find a worksheet in this spreadsheet.");
 
   const range = `${quoteSheetTitle(sheet.properties.title)}!A:ZZ`;
   const values = await fetchGoogleJson(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?majorDimension=ROWS`);
@@ -719,7 +721,7 @@ function applyDcCoupledAdjustment(sheetFinalPrice) {
 }
 
 function leonRowInputData(rowNumber, valuesByField) {
-  if (!activeSheetContext) throw new Error("还没有加载 Leon Sales sheet。");
+  if (!activeSheetContext) throw new Error("Leon Sales sheet has not been loaded yet.");
   const editableColumns = activeSheetContext.editableColumns || {};
   const formulaRow = activeSheetContext.formulas?.[rowNumber - 1] || [];
   return Object.entries(valuesByField)
@@ -735,36 +737,36 @@ function leonRowInputData(rowNumber, valuesByField) {
 }
 
 async function writeLeonRowInputs(rowNumber, valuesByField) {
-  if (!activeSheetContext) throw new Error("还没有加载 Leon Sales sheet。");
+  if (!activeSheetContext) throw new Error("Leon Sales sheet has not been loaded yet.");
   const data = leonRowInputData(rowNumber, valuesByField);
 
   if (!data.length) {
-    throw new Error("没有从第 3 行表头识别到可写入的价格/数量列。");
+    throw new Error("No writable price/quantity columns were detected from row 3 headers.");
   }
 
   return writeGoogleValues(activeSheetContext.spreadsheetId, data);
 }
 
 async function writeLeonRowsInputs(rowNumbers, valuesByField) {
-  if (!activeSheetContext) throw new Error("还没有加载 Leon Sales sheet。");
+  if (!activeSheetContext) throw new Error("Leon Sales sheet has not been loaded yet.");
   const data = rowNumbers.flatMap((rowNumber) => leonRowInputData(rowNumber, valuesByField));
   if (!data.length) {
-    throw new Error("没有从第 3 行表头识别到可写入的价格/数量列。");
+    throw new Error("No writable price/quantity columns were detected from row 3 headers.");
   }
   return writeGoogleValues(activeSheetContext.spreadsheetId, data);
 }
 
 async function writeLeonRowsInputEntries(entries) {
-  if (!activeSheetContext) throw new Error("还没有加载 Leon Sales sheet。");
+  if (!activeSheetContext) throw new Error("Leon Sales sheet has not been loaded yet.");
   const data = entries.flatMap((entry) => leonRowInputData(entry.rowNumber, entry.valuesByField));
   if (!data.length) {
-    throw new Error("没有从第 3 行表头识别到可写入的价格/数量列。");
+    throw new Error("No writable price/quantity columns were detected from row 3 headers.");
   }
   return writeGoogleValues(activeSheetContext.spreadsheetId, data);
 }
 
 async function readLeonRowOutputs(rowNumber) {
-  if (!activeSheetContext) throw new Error("还没有加载 Leon Sales sheet。");
+  if (!activeSheetContext) throw new Error("Leon Sales sheet has not been loaded yet.");
   const finalPriceRange = quotedA1Range(LEON_SHEET_PROFILE.title, LEON_SHEET_PROFILE.finalPriceColumn, rowNumber);
   const payload = await fetchGoogleJson(`https://sheets.googleapis.com/v4/spreadsheets/${activeSheetContext.spreadsheetId}/values/${encodeURIComponent(finalPriceRange)}?valueRenderOption=UNFORMATTED_VALUE`);
   return {
@@ -774,7 +776,7 @@ async function readLeonRowOutputs(rowNumber) {
 }
 
 async function readLeonRowsOutputs(rowNumbers) {
-  if (!activeSheetContext) throw new Error("还没有加载 Leon Sales sheet。");
+  if (!activeSheetContext) throw new Error("Leon Sales sheet has not been loaded yet.");
   const ranges = rowNumbers.map((rowNumber) => quotedA1Range(LEON_SHEET_PROFILE.title, LEON_SHEET_PROFILE.finalPriceColumn, rowNumber));
   const valueRanges = await batchGetGoogleValues(activeSheetContext.spreadsheetId, ranges);
   return valueRanges.map((item, index) => ({
@@ -827,7 +829,7 @@ function csvRowsToProducts(rows, formulas = [], profile = null) {
       const labels = row.map((cell) => cleanText(cell).toUpperCase());
       return labels.some((cell) => cell.includes("INVERTER MODEL")) && labels.some((cell) => cell.includes("BATTERY MODEL"));
     });
-  if (headerIndex === -1) throw new Error("找不到 INVERTER MODEL / BATTERY MODEL 表头，请确认链接是产品价格页。");
+  if (headerIndex === -1) throw new Error("Could not find the INVERTER MODEL / BATTERY MODEL headers. Please confirm the link is a product pricing sheet.");
 
   const headers = rows[headerIndex].map(normalizeHeader);
   const col = (...names) => {
@@ -1022,7 +1024,7 @@ function csvRowsToProducts(rows, formulas = [], profile = null) {
     };
   }).filter(Boolean);
 
-  if (!parsed.length) throw new Error("CSV 已读取，但没有找到可用产品行。");
+  if (!parsed.length) throw new Error("CSV was read, but no usable product rows were found.");
   return parsed;
 }
 
@@ -1030,21 +1032,21 @@ async function loadSheetData() {
   $("googlePrompt")?.classList.add("hidden");
   const button = $("loadSheetBtn");
   button.disabled = true;
-  setSourceStatus(googleAccessToken ? "正在读取 Google Sheet..." : "正在授权并读取 Google Sheet...", "");
+  setSourceStatus(googleAccessToken ? "Reading Google Sheet..." : "Authorizing and reading Google Sheet...", "");
   try {
     let rows;
-    let sourceName = "Google 登录数据";
+    let sourceName = "Google signed-in data";
     if (!googleAccessToken) {
       await requestGoogleAccessToken();
     }
     const result = await loadPrivateSheetRows($("sheetUrl").value);
     rows = result.rows;
-    sourceName = `Google 登录数据：${result.title}`;
+    sourceName = `Google signed-in data: ${result.title}`;
     const profile = result.title === LEON_SHEET_PROFILE.title ? LEON_SHEET_PROFILE : null;
     const headers = rows[(profile || LEON_SHEET_PROFILE).headerRow - 1] || [];
     const headerMap = buildHeaderMap(headers);
     if (profile && (!headerMap.inverterModel || !headerMap.batteryModel)) {
-      throw new Error("Leon Sales sheet 第 3 行找不到 INVERTER MODEL / BATTERY MODEL 表头。");
+      throw new Error("Could not find INVERTER MODEL / BATTERY MODEL headers in row 3 of the Leon Sales sheet.");
     }
     activeSheetContext = profile
       ? {
@@ -1063,9 +1065,9 @@ async function loadSheetData() {
     renderProducts();
     const sheetFinalCount = products.filter((product) => product.sheetFinal).length;
     const sheetFinalStatus = sheetFinalCount
-      ? `，其中 ${sheetFinalCount} 个读取到 AW 最终价`
-      : "，但还没有读取到 AW 最终价";
-    setSourceStatus(`已从 ${sourceName} 加载 ${products.length} 个产品配置${sheetFinalStatus}`, sheetFinalCount ? "ok" : "error");
+      ? `, with ${sheetFinalCount} AW final prices read`
+      : ", but no AW final prices were read yet";
+    setSourceStatus(`Loaded ${products.length} product configurations from ${sourceName}${sheetFinalStatus}`, sheetFinalCount ? "ok" : "error");
   } catch (error) {
     activeSheetContext = null;
     products = [...defaultProducts];
@@ -1073,7 +1075,7 @@ async function loadSheetData() {
     renderExtras();
     renderBrands();
     renderProducts();
-    setSourceStatus(`读取失败：${error.message} 当前仍使用内置数据。`, "error");
+    setSourceStatus(`Read failed: ${error.message} Still using built-in data.`, "error");
   } finally {
     button.disabled = false;
   }
@@ -1238,12 +1240,12 @@ function scheduleLeonSheetCalculation(product) {
       product.sheetYellowFinal = outputs.finalPrice;
       product.sheetFinalRange = outputs.finalPriceRange;
       product.sheetCalculationPending = false;
-      setSourceStatus(`已同步 Row ${product.sheetRowNumber}，读取 ${outputs.finalPriceRange}`, "ok");
+      setSourceStatus(`Synced row ${product.sheetRowNumber}; read ${outputs.finalPriceRange}`, "ok");
       update({ skipSheetSync: true });
     } catch (error) {
       if (version !== sheetSyncVersion || products[current] !== product) return;
       product.sheetCalculationPending = false;
-      setSourceStatus(`表格计算失败：${error.message} 当前使用本地 JavaScript fallback。`, "error");
+      setSourceStatus(`Sheet calculation failed: ${error.message} Using local JavaScript fallback.`, "error");
       update({ skipSheetSync: true });
     }
   }, 350);
@@ -1276,6 +1278,7 @@ function sheetFinalForProduct(product, valuesByField = null) {
 function getLowestPrice(sheetPrice) {
   const numericPrice = Number(sheetPrice);
   if (!Number.isFinite(numericPrice)) return sheetPrice;
+  if (numericPrice <= 0) return numericPrice;
 
   const base = Math.floor(numericPrice / 100) * 100 + 95;
 
@@ -1297,6 +1300,19 @@ function displayPriceForMode(sheetPrice) {
 
 function comparePriceModeLabel() {
   return comparePriceMode() === "lowest" ? "Lowest price" : "Sheet price";
+}
+
+function quotePriceLabel() {
+  return comparePriceMode() === "lowest" ? "Lowest Price" : "Customer Sheet Price";
+}
+
+function quoteDisplayPrice(result) {
+  return displayPriceForMode(result.final);
+}
+
+function waRebatePriceNote(result) {
+  if (result.waRebate === null) return "WA Battery rebate not used";
+  return `WA Battery rebate ${result.waRebate ? `-${fmt(result.waRebate)}` : fmt(0)}`;
 }
 
 function selectedCompareBrands() {
@@ -1627,7 +1643,7 @@ function scheduleCompareSheetCalculations(baseProduct, options = {}) {
         rowNumber: product.sheetRowNumber,
         valuesByField: comparableValuesForProduct(baseProduct, product, { batteryQty: smartCompareAnchor(baseProduct).batteryQty })
       })));
-      setSourceStatus(`已同步 ${visibleEntries.length} 个 Smart Compare 相似配置方案`, "ok");
+      setSourceStatus(`Synced ${visibleEntries.length} Smart Compare similar options`, "ok");
       compareResultsReady = true;
       renderCompare(baseProduct, { force: true, skipCompareSync: true });
       if (products[current] === baseProduct) update({ skipSheetSync: true, keepCompareResults: true });
@@ -1641,7 +1657,7 @@ function scheduleCompareSheetCalculations(baseProduct, options = {}) {
           })));
         } catch {}
       }
-      setSourceStatus(`Smart Compare 计算失败：${error.message}`, "error");
+      setSourceStatus(`Smart Compare calculation failed: ${error.message}`, "error");
       compareResultsReady = true;
       renderCompare(baseProduct, { force: true, skipCompareSync: true });
     } finally {
@@ -1876,6 +1892,56 @@ function renderProducts(selectedIndex = null) {
   loadProduct();
 }
 
+function toggleValueSelected(element, selected) {
+  element?.classList.toggle("value-selected", Boolean(selected));
+}
+
+function setFieldSelection(inputId, statId, selected) {
+  const input = $(inputId);
+  toggleValueSelected(input, selected);
+  toggleValueSelected($(statId), selected);
+  toggleValueSelected(input?.closest(".field"), selected);
+}
+
+function updateSelectionStyles(product, result) {
+  setFieldSelection("batteryQty", "batterySize", controlQty("batteryQty") > 0);
+  setFieldSelection("panelQty", "solarSize", !product.isEvCharger && controlQty("panelQty") > 0);
+
+  toggleValueSelected($("finalPrice")?.closest(".price-card"), result.final > 0);
+  toggleValueSelected($("extrasTotal")?.closest(".extras-total"), result.extras > 0);
+
+  activeExtraDefs(product).forEach(([key]) => {
+    const selected = quoteExtraQty(key) > 0;
+    const item = document.querySelector(`[data-extra-key="${key}"]`);
+    toggleValueSelected(item, selected);
+    toggleValueSelected($(`${key}Price`), selected);
+    toggleValueSelected($(`${key}Qty`), selected);
+    toggleValueSelected($(`${key}Select`), selected);
+  });
+
+  const teslaBaseSelected = Number($("teslaBaseSelect")?.value || 0) > 0;
+  toggleValueSelected($("teslaBaseSelect"), teslaBaseSelected);
+  $("teslaOptions")?.querySelectorAll("label").forEach((label) => {
+    const input = label.querySelector("input");
+    toggleValueSelected(label, input?.checked);
+  });
+}
+
+function fitQuoteTitle() {
+  const title = $("quoteTitle");
+  if (!title || !title.clientWidth) return;
+
+  title.style.fontSize = "";
+  const maxSize = Number.parseFloat(getComputedStyle(title).fontSize) || 34;
+  const minSize = 10;
+  let size = maxSize;
+
+  while (title.scrollWidth > title.clientWidth && size > minSize) {
+    size -= 1;
+    title.style.fontSize = `${size}px`;
+  }
+}
+
 function loadProduct() {
   clearTimeout(sheetSyncTimer);
   sheetSyncVersion += 1;
@@ -1884,7 +1950,7 @@ function loadProduct() {
   });
   current = Number($("productSelect").value);
   const product = products[current];
-  $("batteryQtyLabel").textContent = product.isEvCharger ? "数量" : "电池数量";
+  $("batteryQtyLabel").textContent = product.isEvCharger ? "Quantity" : "Battery quantity";
   $("panelQtyField").classList.toggle("hidden", Boolean(product.isEvCharger));
   $("batteryQty").value = product.isEvCharger ? product.batQty ?? 1 : product.batQty;
   $("panelQty").value = product.isEvCharger ? 0 : product.panels;
@@ -1918,38 +1984,37 @@ function update(options = {}) {
     product.sheetCalculationPending = false;
   }
   const result = calculate(product);
-  const detailValue = (value) => value === null ? "不使用" : fmt(value);
+  const detailValue = (value) => value === null ? "Not used" : fmt(value);
   $("wholesaler").classList.add("hidden");
   $("quoteTitle").textContent = quoteSystemDescription(product, result);
+  requestAnimationFrame(fitQuoteTitle);
   $("batteryName").textContent = [product.inverter, product.battery].filter(Boolean).join("\n");
-  $("finalPrice").textContent = fmt(result.final);
+  const displayFinal = quoteDisplayPrice(result);
+  setText("priceCardLabel", quotePriceLabel());
+  $("finalPrice").textContent = fmt(displayFinal);
   $("batterySize").textContent = `${result.batterySize.toFixed(1)} kWh`;
   $("solarSize").textContent = `${result.solarSize.toFixed(2)} kW`;
   $("extrasTotal").textContent = fmt(result.extras);
   setText("productTotal", detailValue(result.productTotal));
   setText("gstComm", detailValue(result.gstComm));
   setText("install", detailValue(result.install));
-  setText("solarRebate", result.solarCredit === null ? "不使用" : `-${fmt(result.solarCredit)}`);
-  setText("batteryRebate", result.batteryCredit === null ? "不使用" : `-${fmt(result.batteryCredit)}`);
-  setText("waRebate", result.waRebate === null ? "不使用" : result.waRebate ? `-${fmt(result.waRebate)}` : fmt(0));
-  setText("totalRebates", result.totalRebates === null ? "不使用" : result.totalRebates ? `-${fmt(result.totalRebates)}` : fmt(0));
+  setText("solarRebate", result.solarCredit === null ? "Not used" : `-${fmt(result.solarCredit)}`);
+  setText("batteryRebate", result.batteryCredit === null ? "Not used" : `-${fmt(result.batteryCredit)}`);
+  setText("waRebate", result.waRebate === null ? "Not used" : result.waRebate ? `-${fmt(result.waRebate)}` : fmt(0));
+  setText("totalRebates", result.totalRebates === null ? "Not used" : result.totalRebates ? `-${fmt(result.totalRebates)}` : fmt(0));
   setText("baseSell", fmt(result.baseSell));
-  setText("promoFloor", result.promoApplied ? `${fmt(result.promoFloor)} 已套用` : fmt(result.promoFloor));
-  setText("sheetYellowFinal", result.sheetYellowFinal ? fmt(result.sheetYellowFinal) : "未读取");
-  setText("sheetImportedExtras", result.sheetYellowFinal ? fmt(result.sheetImportedExtras) : "未读取");
-  setText("sheetHiddenX", result.sheetHiddenX ? fmt(result.sheetHiddenX) : "未读取");
-  setText("sheetXFormula", result.sheetXFormula || "未读取");
-  setText("sheetFinalFormula", result.sheetFinalFormula || "未读取");
-  setText("sheetBase", result.sheetBase ? fmt(result.sheetBase) : "未读取");
-  setText("sheetFinal", result.sheetFinal ? fmt(result.sheetFinal) : "未读取");
-  setText("sheetDelta", result.sheetFinal ? fmt(result.sheetDelta) : "未读取");
-  $("priceNote").textContent = result.sheetFinal
-    ? `${product.sheetFinalRange || "Google Sheet AW 行"} 黄价；${result.sheetPriceNote}`
-    : product.sheetCalculationPending
-    ? "正在写入 Leon Sales sheet 并读取 AW 最终价，本地价格暂作 fallback"
-    : result.promoApplied
-    ? `促销最低价 ${fmt(result.promoFloor)} 已套用`
-    : "按系统基础价 + extras 计算，含 GST 并已扣除补贴";
+  setText("promoFloor", result.promoApplied ? `${fmt(result.promoFloor)} applied` : fmt(result.promoFloor));
+  setText("sheetYellowFinal", result.sheetYellowFinal ? fmt(result.sheetYellowFinal) : "Not read");
+  setText("sheetImportedExtras", result.sheetYellowFinal ? fmt(result.sheetImportedExtras) : "Not read");
+  setText("sheetHiddenX", result.sheetHiddenX ? fmt(result.sheetHiddenX) : "Not read");
+  setText("sheetXFormula", result.sheetXFormula || "Not read");
+  setText("sheetFinalFormula", result.sheetFinalFormula || "Not read");
+  setText("sheetBase", result.sheetBase ? fmt(result.sheetBase) : "Not read");
+  setText("sheetFinal", result.sheetFinal ? fmt(result.sheetFinal) : "Not read");
+  setText("sheetDelta", result.sheetFinal ? fmt(result.sheetDelta) : "Not read");
+  $("priceNote").textContent = waRebatePriceNote(result);
+  updateSelectionStyles(product, result);
+  updateQuoteTextControls();
   $("quoteText").value = buildQuoteText(product, result);
   renderCompare(product);
   if (!options.skipSheetSync) {
@@ -2053,16 +2118,61 @@ function quoteInverterLabel(product) {
   return `${brand} ${size || ""}kW Inverter`.replace(/\s+/g, " ").trim();
 }
 
+function quoteShortInverterLabel(product) {
+  const size = inverterSizeKw(product);
+  const brand = product.brand === "Sigenergy" ? "SigEn" : product.brand;
+  return `${brand} ${size || ""}kW Inv`.replace(/\s+/g, " ").trim();
+}
+
+function quoteFullInverterLabel(product) {
+  const size = inverterSizeKw(product);
+  return `${product.brand} ${size || ""}kW Inverter`.replace(/\s+/g, " ").trim();
+}
+
+function quoteBackupTitleSuffix(valuesByField = null) {
+  const hasEssentialBackup = quoteExtraQty("backup", valuesByField) > 0;
+  const hasWholeHouseBackup = quoteExtraQty("wholeHome", valuesByField) > 0;
+  if (hasEssentialBackup && hasWholeHouseBackup) return "+Essential loads backup+Whole house backup";
+  if (hasEssentialBackup) return "+Essential loads backup";
+  if (hasWholeHouseBackup) return "+Whole house backup";
+  return "";
+}
+
+function limitQuoteTitle(title, maxLength = QUOTE_TITLE_MAX_LENGTH) {
+  const normalized = String(title || "").replace(/\s+/g, " ").trim();
+  return normalized;
+}
+
 function quoteSystemDescription(product, result, valuesByField = null) {
+  if (product.isEvCharger) return limitQuoteTitle(`${product.inverter} Installation`);
+
+  const solar = quoteSolarLabel(result.solarSize);
+  const battery = quoteBatteryLabel(result.batterySize);
+  const system = `${quoteShortInverterLabel(product)}+${battery}kWh Bat`;
+  const backup = quoteExtraQty("backup", valuesByField) > 0 || quoteExtraQty("wholeHome", valuesByField) > 0 ? "+Backup" : "";
+
+  if (solar) {
+    const titles = [
+      `${solar}kW PV+${system}${backup}`,
+      `${solar}kW PV+${system}`,
+      `${system}${backup}`
+    ];
+    return limitQuoteTitle(titles.find((title) => title.length <= QUOTE_TITLE_MAX_LENGTH) || titles[0]);
+  }
+
+  const coupling = $("dcCoupled")?.checked ? "DC Coupled" : "AC Coupled";
+  return limitQuoteTitle(`${coupling}: ${system}${backup}`);
+}
+
+function quoteEmailSystemDescription(product, result, valuesByField = null) {
   if (product.isEvCharger) return `${product.inverter} Installation`;
 
   const solar = quoteSolarLabel(result.solarSize);
   const battery = quoteBatteryLabel(result.batterySize);
-  const system = `${quoteInverterLabel(product)}+${battery}kWh`;
-  const backup = quoteExtraQty("backup", valuesByField) > 0 || quoteExtraQty("wholeHome", valuesByField) > 0 ? "+Backup" : "";
-
-  if (solar) return `${solar}kW PV+${system} Battery${backup}`;
-  return `${$("dcCoupled")?.checked ? "DC Coupled" : "AC Coupled"}: ${system}${backup}`;
+  const system = `${quoteFullInverterLabel(product)}+${battery}kWh Battery`;
+  const backup = quoteBackupTitleSuffix(valuesByField);
+  const prefix = solar ? `${solar}kW PV+` : `${$("dcCoupled")?.checked ? "DC Coupled" : "AC Coupled"}: `;
+  return `${prefix}${system}${backup}`.replace(/\s+/g, " ").trim();
 }
 
 function quoteInverterTariffNote(product) {
@@ -2171,6 +2281,10 @@ function excelBrandNotes(product, result, valuesByField = null) {
   const noteKey = product.brand === "Sigenergy" ? "Sigenergy" : product.brand;
   const baseNotes = pylonNotes[noteKey] || generalPylonNotes.join("\n");
   let notes = notesWithConfiguredDimensions(product, result, baseNotes);
+  notes = notes.replace(/\n?\* Tile\/Tin roof, Single\/Double storey, 1\/3 phase\n?/g, "\n");
+  if (quoteExtraQty("enclosure8", valuesByField) > 0 || quoteExtraQty("enclosure12", valuesByField) > 0) {
+    notes = notes.replace(/\n?\* External Enclosure Box \(if needed\)\n?/g, "\n");
+  }
   const hasSelectedEvCharger = quoteExtraQty("tesla", valuesByField) > 0 || quoteExtraQty("sigEv", valuesByField) > 0;
   if (hasSelectedEvCharger) {
     notes = notes.replace(
@@ -2185,13 +2299,11 @@ function excelBrandNotes(product, result, valuesByField = null) {
 
 function excelDescriptionLines(product, valuesByField = null) {
   const lines = [];
-  const customQty = quoteExtraQty("custom", valuesByField);
-  const customPrice = quoteExtraPrice("custom", valuesByField);
 
   if (quoteExtraQty("removal", valuesByField) > 0) lines.push("* Panel Removal & Disposal");
   if (quoteExtraQty("rewiring", valuesByField) > 0) lines.push("* Panel Rewiring to New Hybrid Inverter");
   if (quoteExtraQty("enclosure8", valuesByField) > 0 || quoteExtraQty("enclosure12", valuesByField) > 0) {
-    lines.push("* External Enclosure Box (if needed)");
+    lines.push("* External Enclosure Box Included");
   }
 
   if (quoteExtraQty("switch", valuesByField) > 0) {
@@ -2211,9 +2323,6 @@ function excelDescriptionLines(product, valuesByField = null) {
 
   const evDescription = selectedEvChargerDescription(product, valuesByField);
   if (evDescription) lines.push(evDescription);
-  if (customQty > 0 && customPrice > 0) {
-    lines.push(`* Custom extra: ${fmt(customPrice)} x ${customQty}`);
-  }
 
   const productNote = cleanText(product.productNote);
   if (/hws|hot water/i.test(productNote)) {
@@ -2224,13 +2333,101 @@ function excelDescriptionLines(product, valuesByField = null) {
   return lines;
 }
 
-function buildQuoteText(product, result) {
+function quoteTextMode() {
+  return $("quoteTextMode")?.value || "main";
+}
+
+function quoteFinanceEnabled() {
+  return document.querySelector('input[name="quoteFinance"]:checked')?.value === "yes";
+}
+
+function updateQuoteTextControls() {
+  $("quoteFinanceControl")?.classList.toggle("hidden", quoteTextMode() !== "email");
+}
+
+function buildAvailableQuoteText() {
+  return [
+    "* Panel Removal & Disposal",
+    "* Solar DC Cable Rewiring to New Hybrid Inverter",
+    "* External Enclosure Box (if needed)",
+    "* $10k Govt interest-free loan via Plenti (Income <$210k, ~20% approval rate)",
+    "* Switchboard upgrade required due to asbestos compliance",
+    "* Referral Program Discount (Referred by xxx)",
+    "* Blackout Protection NOT Included\n(Optional essential-load backup: $600 for 2 circuits, usually fridge and lights)",
+    "* Blackout Protection NOT Included\n(Optional Full-house backup: $2,000 for extra Sigenergy Gateway Box)",
+    "* Blackout Protection for Essential Loads Included\n(Backup for 2 selected circuits, usually the fridge and lights)",
+    "* Blackout Protection for Full-house Backup Included for $2,000 with Sigenergy Gateway Box",
+    "* Sigenergy DC EV 12.5kW Charger Installation Included\n(25kW software licence not included. Customer to purchase and activate it separately via the Sigenergy App)",
+    "* This proposal is subject to site inspection and confirmation.",
+    "* Customer to ensure solar HWS is removed prior to install",
+    "* Removal & disposal of gas hot water system;\nInstallation of electric hot water system"
+  ].join("\n");
+}
+
+function buildEmailText(product, result) {
+  const systemTitle = quoteEmailSystemDescription(product, result);
+  if (quoteFinanceEnabled()) {
+    return `Hi,
+
+Thanks for your patience, please find your tailored "${systemTitle}" system quote below.
+
+Linked a comparison for your reference: x
+
+When you're ready to proceed, here is how we work ($10k Govt interest-free loan needed):
+1. E-sign the quote first, and we will assist with your Plenti loan application.
+2. - No deposit required for systems under $10k (fully covered by finance) to initiate the process.
+   - For systems over $10k, a 10% deposit is needed to initiate the process, and any remaining balance is payable on installation day.
+
+(--If $10k Govt interest-free loan gets declined, proceed installation with a cash payment.)
+
+We know customers often compare the hardware list and price, which makes sense. At DMG, we also put a lot of focus on good system design, high-quality installation, safety testing, commissioning and aftercare, as these all affect how safely and reliably the system performs over the long term.
+
+We're a local WA solar and battery installer with our own in-house installation teams. We complete the required testing and commissioning properly, and keep records of the work, so your system is installed safely, correctly and to the required standards.
+
+You can also check our Google reviews here:
+https://maps.app.goo.gl/6M1xGfUHEaWAs252A?g_st=ic
+
+Kind regards,
+Leon | DMG Solar`;
+  }
+
+  return `Hi,
+
+Thanks for your patience, please find your tailored "${systemTitle}" system quote below.
+
+Linked a comparison for your reference: xxx
+
+When you're ready to proceed, here is how we work (without finance):
+1. E-sign the quote and pay a 10% deposit to initiate the process.
+2. The balance is due on installation day via bank transfer, card, or cash.
+
+We know customers often compare the hardware list and price, which makes sense. At DMG, we also put a lot of focus on good system design, high-quality installation, safety testing, commissioning and aftercare, as these all affect how safely and reliably the system performs over the long term.
+
+We're a local WA solar and battery installer with our own in-house installation teams. We complete the required testing and commissioning properly, and keep records of the work, so your system is installed safely, correctly and to the required standards.
+
+You can also check our Google reviews here:
+https://maps.app.goo.gl/6M1xGfUHEaWAs252A?g_st=ic
+
+Feel free to reach out if you have any questions! Happy to answer.
+
+Kind regards,
+Leon | DMG Solar`;
+}
+
+function buildMainQuoteText(product, result) {
   const extraDescription = excelDescriptionLines(product).join("\n");
   return [
-    quoteSystemDescription(product, result),
+    [quoteSystemDescription(product, result), SITE_CONDITION_NOTE].filter(Boolean).join("\n"),
     extraDescription,
     excelBrandNotes(product, result)
   ].filter(Boolean).join("\n\n");
+}
+
+function buildQuoteText(product, result) {
+  const mode = quoteTextMode();
+  if (mode === "available") return buildAvailableQuoteText();
+  if (mode === "email") return buildEmailText(product, result);
+  return buildMainQuoteText(product, result);
 }
 
 function selectProduct(index) {
@@ -2264,21 +2461,22 @@ function renderCompare(baseProduct, options = {}) {
   $("compareList").innerHTML = cards.map((candidate) => {
     const { product: p, index, displayPrice, batteryQty, batteryCapacity, inverterSize, score, priceDiff, compareValues, estimate } = candidate;
     const active = index === current ? " active" : "";
-    const promoLabel = estimate.promoApplied ? `<span class="promo-label">促销最低价</span>` : "";
+    const perfect = score === 100 ? " perfect-match" : "";
+    const promoLabel = estimate.promoApplied ? `<span class="promo-label">Promo floor</span>` : "";
     const priceModeLabel = `<span class="promo-label">${escapeHtml(comparePriceModeLabel())}</span>`;
     const rowLabel = comparePriceMode() === "sheet" && p.sheetRowNumber ? ` (Row ${p.sheetRowNumber})` : "";
     const inverterLabel = [`${inverterSize || 0}kW`, inverterModelLabel(p)].filter(Boolean).join(" ");
     const extrasLabel = compareExtrasSummary(compareValues, p);
-    const quoteTitle = `${compareQuoteTitle(candidate)}${rowLabel}`;
-    return `<button class="compare-card${active}" type="button" data-index="${index}">
+    const quoteTitle = limitQuoteTitle(`${compareQuoteTitle(candidate)}${rowLabel}`);
+    return `<button class="compare-card${active}${perfect}" type="button" data-index="${index}">
       <div class="compare-card-top">
         <span class="compare-brand">${escapeHtml(p.brand)}</span>
-        <strong class="compare-price">${displayPrice ? fmt(displayPrice) : "计算中"}</strong>
+        <strong class="compare-price">${displayPrice ? fmt(displayPrice) : "Calculating"}</strong>
       </div>
       <div class="compare-badges">
         ${promoLabel}
         ${priceModeLabel}
-        <span class="promo-label">Match score: ${score}%</span>
+        <span class="promo-label match-score-label${score === 100 ? " perfect-match" : ""}">Match score: ${score}%</span>
       </div>
       <strong class="compare-product">${escapeHtml(quoteTitle)}</strong>
       <span>Inverter size: ${escapeHtml(inverterLabel)}</span>
@@ -2347,7 +2545,6 @@ $("resetExtras").addEventListener("click", () => {
   applyProductRestrictions(product);
   update();
 });
-$("printBtn").addEventListener("click", () => window.print());
 $("calculateCompareBtn").addEventListener("click", () => {
   compareResultsReady = true;
   const scheduled = scheduleCompareSheetCalculations(products[current], { manual: true });
@@ -2388,6 +2585,7 @@ document.addEventListener("keydown", (event) => {
   $("compareBrand")?.classList.remove("open");
   $("compareBrandTrigger")?.setAttribute("aria-expanded", "false");
 });
+window.addEventListener("resize", fitQuoteTitle);
 ["compareInverter", "compareBattery", "comparePrice", "compareSort", "compareMinPrice", "compareMaxPrice"].forEach((id) => {
   $(id)?.addEventListener("change", () => {
     toggleCustomPriceFields();
@@ -2404,14 +2602,23 @@ document.querySelectorAll('input[name="comparePriceMode"]').forEach((input) => {
   input.addEventListener("change", () => {
     compareResultsReady = false;
     clearCompareResults(products[current]);
+    update({ skipSheetSync: true });
+  });
+});
+$("quoteTextMode")?.addEventListener("change", () => {
+  update({ skipSheetSync: true });
+});
+document.querySelectorAll('input[name="quoteFinance"]').forEach((input) => {
+  input.addEventListener("change", () => {
+    update({ skipSheetSync: true });
   });
 });
 $("copyQuoteBtn").addEventListener("click", async () => {
   const text = $("quoteText").value;
   try {
     await navigator.clipboard.writeText(text);
-    $("copyQuoteBtn").textContent = "已复制";
-    setTimeout(() => $("copyQuoteBtn").textContent = "复制", 1200);
+    $("copyQuoteBtn").textContent = "Copied";
+    setTimeout(() => $("copyQuoteBtn").textContent = "Copy", 1200);
   } catch {
     $("quoteText").select();
     document.execCommand("copy");

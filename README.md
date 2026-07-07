@@ -43,7 +43,7 @@ http://localhost:8000
 https://chloechenme-stack.github.io
 ```
 
-6. Copy the Client ID into the app, then click `加载 Google Sheet`.
+6. Copy the Client ID into the app, then click `Load Google Sheet`.
 
 The app requests Google Sheets read/write access so it can write selected input quantities to the configured sheet row and read the calculated result back:
 
