@@ -96,9 +96,11 @@ const fixedDropdownExtraOptions = {
   sigEv: [3900, 4900]
 };
 
-const teslaEvBaseOptions = [300, 1995, 800];
+const teslaEvBaseOptions = [1995, 800];
 const teslaEvAddonOptions = [
   ["teslaAddon200", 200],
+  ["teslaAddon300", 300],
+  ["teslaAddon440", 440],
   ["teslaAddon500", 500]
 ];
 
@@ -610,25 +612,36 @@ function setFixedDropdownExtra(key, qty, price) {
   if (hiddenPrice) hiddenPrice.value = value || 0;
 }
 
+function selectedTeslaAddonIds(total) {
+  const target = Number(total || 0);
+  if (target === 0) return new Set();
+
+  function findCombo(index, remaining) {
+    if (remaining === 0) return [];
+    if (remaining < 0 || index >= teslaEvAddonOptions.length) return null;
+
+    const [id, amount] = teslaEvAddonOptions[index];
+    const withCurrent = findCombo(index + 1, remaining - amount);
+    if (withCurrent) return [id, ...withCurrent];
+    return findCombo(index + 1, remaining);
+  }
+
+  const combo = findCombo(0, target);
+  return combo ? new Set(combo) : null;
+}
+
 function setTeslaEvSelection(qty, price) {
   const selected = Number(qty) ? Number(price || 0) : 0;
-  let remaining = selected;
   let base = "";
+  let selectedAddons = new Set();
 
-  if (remaining > 0) {
-    base = teslaEvBaseOptions.find((option) => option === remaining) || 1995;
-    remaining -= base;
+  if (selected > 0) {
+    const baseMatch = [...teslaEvBaseOptions, 0].find((option) => selected >= option && selectedTeslaAddonIds(selected - option));
+    base = baseMatch ? String(baseMatch) : "";
+    selectedAddons = selectedTeslaAddonIds(selected - Number(base || 0)) || new Set();
   }
 
   if ($("teslaBaseSelect")) $("teslaBaseSelect").value = base ? String(base) : "";
-
-  const selectedAddons = new Set();
-  [...teslaEvAddonOptions].sort((a, b) => b[1] - a[1]).forEach(([id, amount]) => {
-    if (remaining >= amount) {
-      selectedAddons.add(id);
-      remaining -= amount;
-    }
-  });
 
   teslaEvAddonOptions.forEach(([id]) => {
     const checkbox = $(id);
@@ -1829,7 +1842,7 @@ function renderExtras() {
       return;
     }
     if (key === "tesla") {
-      document.querySelectorAll('#teslaBaseSelect, #teslaAddon200, #teslaAddon500').forEach((input) => {
+      $("teslaOptions").querySelectorAll("select, input").forEach((input) => {
         input.addEventListener("change", () => {
           syncTeslaEvHiddenFields();
           update();
