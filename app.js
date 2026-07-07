@@ -2356,17 +2356,17 @@ function updateQuoteTextControls() {
 
 function buildAvailableQuoteText() {
   return [
-    "* Panel Removal & Disposal",
-    "* Solar DC Cable Rewiring to New Hybrid Inverter",
-    "* External Enclosure Box (if needed)",
     "* $10k Govt interest-free loan via Plenti (Income <$210k, ~20% approval rate)",
-    "* Switchboard upgrade required due to asbestos compliance",
+    "",
     "* Referral Program Discount (Referred by xxx)",
+    "",
     "* Blackout Protection NOT Included\n(Optional essential-load backup: $600 for 2 circuits, usually fridge and lights)",
     "* Blackout Protection NOT Included\n(Optional Full-house backup: $2,000 for extra Sigenergy Gateway Box)",
     "* Blackout Protection for Essential Loads Included\n(Backup for 2 selected circuits, usually the fridge and lights)",
     "* Blackout Protection for Full-house Backup Included for $2,000 with Sigenergy Gateway Box",
+    "",
     "* Sigenergy DC EV 12.5kW Charger Installation Included\n(25kW software licence not included. Customer to purchase and activate it separately via the Sigenergy App)",
+    "",
     "* This proposal is subject to site inspection and confirmation.",
     "* Customer to ensure solar HWS is removed prior to install",
     "* Removal & disposal of gas hot water system;\nInstallation of electric hot water system"
