@@ -7,7 +7,7 @@ const defaultProducts = [
   { brand: "GoodWe", wholesaler: "GoodWe", inverter: "GoodWe 5kW 3P / GW5K-ETA-G20", battery: "8.0kWh / GW8.3-BAT-D-G20", inv: 2150, invQty: 1, bat: 2684, batQty: 3, batUnit: 8, panels: 0, panelPrice: 125, margin: 1.25, min: 6595, phaseQty: 1, baseBackup: 1, baseRemoval: 15, baseEnclosure: 1 },
   { brand: "GoodWe", wholesaler: "GoodWe", inverter: "GoodWe 10kW 3P / GW9.999K-ETA-G20", battery: "8.0kWh / GW8.3-BAT-D-G20", inv: 2500, invQty: 1, bat: 2684, batQty: 4, batUnit: 8, panels: 21, panelPrice: 125, margin: 1.25, min: 6595, phaseQty: 1, baseBackup: 1, baseDouble: 1, baseEnclosure: 1 },
   { brand: "GoodWe", wholesaler: "GoodWe", inverter: "GoodWe 15kW 3P / GW15K-ETA-G20", battery: "8.0kWh / GW8.3-BAT-D-G20", inv: 2800, invQty: 1, bat: 2684, batQty: 5, batUnit: 8, panels: 0, panelPrice: 125, margin: 1.25, min: 6595, phaseQty: 1, baseBackup: 1, baseRemoval: 20, switchQty: 1, teslaEvPrice: 800, sigEvQty: 1, enclosurePrice: 640 },
-  { brand: "Sigenergy", wholesaler: "ENERGY SPURT", inverter: "Sigenergy 5kW single phase / SigenStor-5S", battery: "8kWh Sigenergy", inv: 1750, invQty: 1, bat: 3700, batQty: 2, batUnit: 8, panels: 21, panelPrice: 125, margin: 1.25, min: 6595, backupPrice: 1500, baseEnclosure: 1 },
+  { brand: "Sigenergy", wholesaler: "ENERGY SPURT", inverter: "Sigenergy 5kW single phase / SigenStor-5S", battery: "8kWh Sigenergy", inv: 1750, invQty: 1, bat: 3700, batQty: 2, batUnit: 8, panels: 21, panelPrice: 125, margin: 1.25, min: 6595, backupPrice: 2000, baseEnclosure: 1 },
   { brand: "Sigenergy", wholesaler: "ENERGY SPURT", inverter: "Sigenergy 5kW 3 phase / SigenStor-5T", battery: "8kWh Sigenergy", inv: 2650, invQty: 1, bat: 3700, batQty: 0, batUnit: 8, panels: 14, panelPrice: 125, margin: 1.25, min: 6595, phaseQty: 1, backupPrice: 2000 },
   { brand: "Sigenergy", wholesaler: "ENERGY SPURT", inverter: "Sigenergy 10kW single phase / SigenStor-10S", battery: "8kWh Sigenergy", inv: 2700, invQty: 1, bat: 3700, batQty: 4, batUnit: 8, panels: 21, panelPrice: 125, margin: 1.25, min: 6595, backupPrice: 2000, enclosurePrice: 638, baseEnclosure: 1 },
   { brand: "Sigenergy", wholesaler: "ENERGY SPURT", inverter: "Sigenergy 10kW 3 phase / SigenStor-10T", battery: "8kWh Sigenergy", inv: 2900, invQty: 1, bat: 3700, batQty: 4, batUnit: 8, panels: 0, panelPrice: 125, margin: 1.25, min: 6595, phaseQty: 1, backupPrice: 2000, baseRemoval: 21, baseEnclosure: 1 },
@@ -76,10 +76,12 @@ const extraDefs = [
   ["tesla", "Tesla EV charger", 1995],
   ["sigEv", "Sigenergy AC EV charger", 1995],
   ["enclosure8", "External Enclosure Box 8 poles", 440],
-  ["enclosure12", "External Enclosure Box 12 POLE", 636]
+  ["enclosure12", "External Enclosure Box 12 POLE", 636],
+  ["custom", "Custom", 0]
 ];
 
-const editableExtraPriceKeys = new Set(["switch", "tesla", "sigEv"]);
+const sheetWritableExtraPriceKeys = new Set(["switch", "tesla", "sigEv"]);
+const editableExtraPriceKeys = new Set([...sheetWritableExtraPriceKeys, "custom"]);
 
 const evChargerExtras = [
   ["ev3p", "3p", 200],
@@ -87,6 +89,17 @@ const evChargerExtras = [
   ["evEnclosure", "External Enclosure", 440],
   ["evCallOut", "Call out fee", 300],
   ["evInstallOnly", "Install Only", 800]
+];
+
+const fixedDropdownExtraOptions = {
+  switch: [2050, 2550],
+  sigEv: [3900, 4900]
+};
+
+const teslaEvBaseOptions = [300, 1995, 800];
+const teslaEvAddonOptions = [
+  ["teslaAddon200", 200],
+  ["teslaAddon500", 500]
 ];
 
 const pylonNotes = {
@@ -259,7 +272,6 @@ const generalPylonNotes = [
   "* External Enclosure Box (if needed)",
   "* $10k Govt interest-free loan via Plenti (Income <$210k, ~20% approval rate), proceed if declined",
   "* Switchboard upgrade required due to asbestos compliance",
-  "* Blackout Protection NOT Included (Optional essential-load backup: $600 for 2 circuits, usually fridge and lights)",
   "* WA REBATE -- Only Eligible for Australian Citizens/PR & Synergy VPP Participants & DC Coupling"
 ];
 
@@ -527,6 +539,7 @@ function buildHeaderMap(headers) {
   });
 
   const switchboard = extraColumns(["SWITCHBOARD"]);
+  const backup = extraColumns(["ESSENTIAL", "LOADS", "BACKUP"]);
 
   return {
     inverterModel: find(["INVERTER", "MODEL"]),
@@ -540,7 +553,8 @@ function buildHeaderMap(headers) {
     double: findQtyNear(["DOUBLE", "STOREY"], ["EXTRAS", "DOUBLE"]),
     switchPrice: switchboard.price,
     switch: switchboard.qty,
-    backup: findQtyNear(["ESSENTIAL", "LOADS", "BACKUP"]),
+    backupPrice: backup.price,
+    backup: backup.qty,
     wholeHome: findQtyNear(["WHOLE", "HOUSE", "BACKUP"], ["FULL", "HOME", "BACKUP"]),
     teslaPrice: hasColumn("AO") ? "AO" : findPriceNear(["TESLA", "EV", "CHARGER"]),
     tesla: hasColumn("AP") ? "AP" : findQtyNear(["TESLA", "EV", "CHARGER"]),
@@ -579,7 +593,73 @@ function activeExtraDefs(product = products[current]) {
   return product?.isEvCharger ? evChargerExtras : extraDefs;
 }
 
-function getLeonValuesByField() {
+function fixedDropdownValue(key, qty, price) {
+  const options = fixedDropdownExtraOptions[key] || [];
+  if (!Number(qty)) return "";
+  const value = Number(price || 0);
+  return options.includes(value) ? String(value) : String(options[0] || "");
+}
+
+function setFixedDropdownExtra(key, qty, price) {
+  const select = $(`${key}Select`);
+  const hiddenQty = $(`${key}Qty`);
+  const hiddenPrice = $(`${key}Price`);
+  const value = fixedDropdownValue(key, qty, price);
+  if (select) select.value = value;
+  if (hiddenQty) hiddenQty.value = value ? 1 : 0;
+  if (hiddenPrice) hiddenPrice.value = value || 0;
+}
+
+function setTeslaEvSelection(qty, price) {
+  const selected = Number(qty) ? Number(price || 0) : 0;
+  let remaining = selected;
+  let base = "";
+
+  if (remaining > 0) {
+    base = teslaEvBaseOptions.find((option) => option === remaining) || 1995;
+    remaining -= base;
+  }
+
+  if ($("teslaBaseSelect")) $("teslaBaseSelect").value = base ? String(base) : "";
+
+  const selectedAddons = new Set();
+  [...teslaEvAddonOptions].sort((a, b) => b[1] - a[1]).forEach(([id, amount]) => {
+    if (remaining >= amount) {
+      selectedAddons.add(id);
+      remaining -= amount;
+    }
+  });
+
+  teslaEvAddonOptions.forEach(([id]) => {
+    const checkbox = $(id);
+    if (!checkbox) return;
+    checkbox.checked = selectedAddons.has(id);
+  });
+
+  syncTeslaEvHiddenFields();
+}
+
+function syncTeslaEvHiddenFields() {
+  const base = Number($("teslaBaseSelect")?.value || 0);
+  const addons = teslaEvAddonOptions.reduce((sum, [id, amount]) => sum + ($(id)?.checked ? amount : 0), 0);
+  const price = base ? base + addons : 0;
+  const qty = price ? 1 : 0;
+  if ($("teslaPrice")) $("teslaPrice").value = price;
+  if ($("teslaQty")) $("teslaQty").value = qty;
+}
+
+function backupPriceForProduct(product) {
+  return product?.brand === "Sigenergy" ? 2000 : product?.backupPrice || product?.extraPrices?.backup || 600;
+}
+
+function addProductSheetValueOverrides(values, product) {
+  if (product?.brand === "Sigenergy") {
+    values.backupPrice = 2000;
+  }
+  return values;
+}
+
+function getLeonSheetValuesByField(product = products[current]) {
   const values = {
     batteryQty: controlQty("batteryQty"),
     panelQty: controlQty("panelQty"),
@@ -596,14 +676,22 @@ function getLeonValuesByField() {
     enclosure8: controlQty("enclosure8Qty"),
     enclosure12: controlQty("enclosure12Qty")
   };
-  editableExtraPriceKeys.forEach((key) => {
+  sheetWritableExtraPriceKeys.forEach((key) => {
     values[`${key}Price`] = controlNum(`${key}Price`);
   });
-  return values;
+  return addProductSheetValueOverrides(values, product);
+}
+
+function getLeonValuesByField(product = products[current]) {
+  return {
+    ...getLeonSheetValuesByField(product),
+    custom: controlQty("customQty"),
+    customPrice: controlNum("customPrice")
+  };
 }
 
 function leonInputKey() {
-  return JSON.stringify(getLeonValuesByField());
+  return JSON.stringify(getLeonSheetValuesByField(products[current]));
 }
 
 function applyDcCoupledAdjustment(sheetFinalPrice) {
@@ -983,6 +1071,20 @@ function batteryStcs(kwh, factor) {
   return Math.floor(weighted * factor);
 }
 
+function extraAmount(key, valuesByField = null) {
+  const qty = valuesByField ? Number(valuesByField[key] || 0) : controlQty(`${key}Qty`);
+  const price = valuesByField ? Number(valuesByField[`${key}Price`] || 0) : controlNum(`${key}Price`);
+  return qty * price;
+}
+
+function customExtraTotal(valuesByField = null) {
+  return extraAmount("custom", valuesByField);
+}
+
+function activeExtrasTotal(product, valuesByField = null) {
+  return activeExtraDefs(product).reduce((sum, [key]) => sum + extraAmount(key, valuesByField), 0);
+}
+
 function calculate(product) {
   const batQty = controlQty("batteryQty");
   const panelQty = controlQty("panelQty");
@@ -990,7 +1092,9 @@ function calculate(product) {
   const stcFactor = DEFAULT_STC_FACTOR;
   const batterySize = batQty * product.batUnit;
   const solarSize = panelQty * 475 / 1000;
-  const extras = activeExtraDefs(product).reduce((sum, [key]) => sum + controlQty(key + "Qty") * controlNum(key + "Price"), 0);
+  const extras = activeExtrasTotal(product);
+  const customExtras = customExtraTotal();
+  const sheetExtras = extras - customExtras;
 
   if (product.isEvCharger) {
     const baseSell = (product.basePrice || 1995) * batQty;
@@ -1026,6 +1130,7 @@ function calculate(product) {
   if (product.dynamic && product.sheetFinal && !product.sheetCalculationPending) {
     const sheetFinal = product.sheetFinal;
     const dcAdjustment = applyDcCoupledAdjustment(sheetFinal);
+    const final = dcAdjustment.final + customExtras;
     return {
       batterySize,
       solarSize,
@@ -1038,8 +1143,8 @@ function calculate(product) {
       totalRebates: dcAdjustment.waRebate,
       baseSell: sheetFinal,
       extras,
-      final: dcAdjustment.final,
-      formulaFinal: dcAdjustment.final,
+      final,
+      formulaFinal: final,
       sheetBase: 0,
       sheetHiddenX: product.sheetHiddenX || 0,
       sheetXFormula: product.sheetXFormula || "",
@@ -1047,7 +1152,7 @@ function calculate(product) {
       sheetFinal,
       sheetYellowFinal: product.sheetYellowFinal || 0,
       sheetImportedExtras: product.sheetImportedExtras || 0,
-      sheetDelta: dcAdjustment.final - sheetFinal,
+      sheetDelta: final - sheetFinal,
       sheetPriceNote: dcAdjustment.note,
       promoFloor: 0,
       promoApplied: false
@@ -1063,9 +1168,9 @@ function calculate(product) {
   const install = 2000 + 300 * solarSize + 30 * batterySize;
   const totalRebates = batteryCredit + solarCredit + waRebate;
   const baseSell = gstComm + install - totalRebates;
-  const beforeFloor = baseSell + extras;
+  const beforeFloor = baseSell + sheetExtras;
   const promoFloor = product.min || 0;
-  const formulaFinal = USE_PROMO_FLOOR ? Math.max(promoFloor, beforeFloor) : beforeFloor;
+  const formulaFinal = (USE_PROMO_FLOOR ? Math.max(promoFloor, beforeFloor) : beforeFloor) + customExtras;
   const sheetFinal = product.sheetCalculationPending ? 0 : product.sheetBase ? product.sheetBase + extras : product.sheetFinal || 0;
   const final = sheetFinal || formulaFinal;
   return {
@@ -1112,7 +1217,7 @@ function scheduleLeonSheetCalculation(product) {
       // Web input -> write editable quantities to the selected Leon Sales sheet row.
       // Google Sheet formulas calculate in that same row.
       // Then read AW{rowNumber} from the same row as the final customer price.
-      await writeLeonRowInputs(product.sheetRowNumber, getLeonValuesByField());
+      await writeLeonRowInputs(product.sheetRowNumber, getLeonSheetValuesByField(product));
       const outputs = await readLeonRowOutputs(product.sheetRowNumber);
       if (version !== sheetSyncVersion || products[current] !== product) return;
       product.lastLeonInputKey = inputKey;
@@ -1142,17 +1247,17 @@ function compareInputKey(baseProduct = products[current]) {
   return compareInputKeyForValues(baseProduct, getLeonValuesByField());
 }
 
-function compareFinalForProduct(product, inputKey) {
+function compareFinalForProduct(product, inputKey, valuesByField = null) {
   if (product.compareResults?.[inputKey]) {
-    return applyDcCoupledAdjustment(product.compareResults[inputKey].finalPrice).final;
+    return applyDcCoupledAdjustment(product.compareResults[inputKey].finalPrice).final + customExtraTotal(valuesByField);
   }
   if (product.compareInputKey !== inputKey || !product.compareSheetFinal) return null;
-  return applyDcCoupledAdjustment(product.compareSheetFinal).final;
+  return applyDcCoupledAdjustment(product.compareSheetFinal).final + customExtraTotal(valuesByField);
 }
 
-function sheetFinalForProduct(product) {
+function sheetFinalForProduct(product, valuesByField = null) {
   if (!product?.sheetFinal || product.sheetCalculationPending) return null;
-  return applyDcCoupledAdjustment(product.sheetFinal).final;
+  return applyDcCoupledAdjustment(product.sheetFinal).final + customExtraTotal(valuesByField);
 }
 
 function getLowestPrice(sheetPrice) {
@@ -1313,10 +1418,10 @@ function toggleCustomPriceFields() {
 function comparableValuesForProduct(baseProduct, product, overrides = {}) {
   const values = getLeonValuesByField();
   const disabled = disabledExtrasForProduct(product);
-  const comparableValues = {
+  const comparableValues = addProductSheetValueOverrides({
     ...values,
     ...overrides
-  };
+  }, product);
   disabled.forEach((key) => {
     if (key in comparableValues) comparableValues[key] = 0;
   });
@@ -1349,8 +1454,8 @@ function compareCandidateForProduct(baseProduct, product, index, anchor, battery
     : comparableValuesForProduct(baseProduct, product, { batteryQty: batteryQtyOverride });
   const estimate = active ? calculate(product) : estimateBase(product, { useCurrentInputs: false, valuesByField: compareValues });
   const inputKey = compareInputKeyForValues(baseProduct, compareValues);
-  const compareFinal = compareFinalForProduct(product, inputKey);
-  const sheetFinal = sheetFinalForProduct(product);
+  const compareFinal = compareFinalForProduct(product, inputKey, compareValues);
+  const sheetFinal = sheetFinalForProduct(product, compareValues);
   const usesSheetCompare = Boolean(activeSheetContext && product.sheetProfile === LEON_SHEET_PROFILE.title && product.sheetRowNumber && !product.isEvCharger);
   const sheetPrice = active ? anchor.sheetPrice : compareFinal ?? sheetFinal ?? estimate.final;
   const displayPrice = displayPriceForMode(sheetPrice);
@@ -1567,7 +1672,7 @@ function setExtraDefaults(product) {
     rewiring: importedPrices.rewiring || 40,
     double: product.doublePrice || 2000,
     switch: importedPrices.switch || 1650,
-    backup: product.backupPrice || 600,
+    backup: backupPriceForProduct(product),
     wholeHome: importedPrices.wholeHome || 2000,
     tesla: product.teslaEvPrice || 1995,
     sigEv: product.sigenergyEvPrice || 1995,
@@ -1575,8 +1680,14 @@ function setExtraDefaults(product) {
     enclosure12: product.enclosure12Price || 636
   };
   extraDefs.forEach(([key, , defaultPrice]) => {
-    $(key + "Qty").value = defaults[key] || 0;
-    $(key + "Price").value = prices[key] || defaultPrice;
+    if (fixedDropdownExtraOptions[key]) {
+      setFixedDropdownExtra(key, defaults[key], prices[key] || defaultPrice);
+    } else if (key === "tesla") {
+      setTeslaEvSelection(defaults[key], prices[key] || defaultPrice);
+    } else {
+      $(key + "Qty").value = defaults[key] || 0;
+      $(key + "Price").value = prices[key] || defaultPrice;
+    }
   });
 }
 
@@ -1623,7 +1734,14 @@ function applyProductRestrictions(product) {
       if (qty.type === "checkbox") qty.checked = false;
       else qty.value = 0;
     }
-    [qty, price].forEach((element) => {
+    const controls = [
+      qty,
+      price,
+      $(`${key}Select`),
+      key === "tesla" ? $("teslaBaseSelect") : null,
+      ...($("teslaOptions") && key === "tesla" ? [...$("teslaOptions").querySelectorAll("input")] : [])
+    ];
+    controls.forEach((element) => {
       if (!element) return;
       element.disabled = isDisabled;
       element.title = isDisabled
@@ -1636,6 +1754,57 @@ function applyProductRestrictions(product) {
   });
 }
 
+function fixedDropdownExtraHtml(key, label) {
+  const options = fixedDropdownExtraOptions[key] || [];
+  return `
+    <div class="extra-item extra-item-select" data-extra-key="${key}">
+      <strong class="extra-label">${escapeHtml(extraLabel(key, label))}</strong>
+      <select id="${key}Select" class="extra-select" aria-label="${escapeHtml(extraLabel(key, label))}">
+        <option value="">0</option>
+        ${options.map((value) => `<option value="${value}">${value}</option>`).join("")}
+      </select>
+      <input id="${key}Price" type="hidden" value="0">
+      <input class="extra-qty" id="${key}Qty" type="hidden" value="0">
+    </div>
+  `;
+}
+
+function teslaExtraHtml(label) {
+  return `
+    <div class="extra-item extra-item-tesla" data-extra-key="tesla">
+      <strong class="extra-label">${escapeHtml(extraLabel("tesla", label))}</strong>
+      <div id="teslaOptions" class="tesla-options" aria-label="${escapeHtml(extraLabel("tesla", label))}">
+        <select id="teslaBaseSelect" class="extra-select" aria-label="Tesla EV charger base">
+          <option value="">0</option>
+          ${teslaEvBaseOptions.map((value) => `<option value="${value}">${value}</option>`).join("")}
+        </select>
+        <div class="tesla-option-group tesla-option-addons" aria-label="Tesla EV charger extras">
+          ${teslaEvAddonOptions.map(([id, value]) => `
+            <label>
+              <input id="${id}" type="checkbox" value="${value}">
+              <span>${value}</span>
+            </label>
+          `).join("")}
+        </div>
+      </div>
+      <input id="teslaPrice" type="hidden" value="0">
+      <input class="extra-qty" id="teslaQty" type="hidden" value="0">
+    </div>
+  `;
+}
+
+function standardExtraHtml(key, label, price) {
+  return `
+    <div class="extra-item" data-extra-key="${key}">
+      <label class="extra-price-field">
+        <strong class="extra-label">${escapeHtml(extraLabel(key, label))}</strong>
+        <input id="${key}Price" type="number" min="0" step="1" value="${price}" ${editableExtraPriceKeys.has(key) ? "" : "readonly"} aria-label="${escapeHtml(extraLabel(key, label))} price">
+      </label>
+      <input class="extra-qty" id="${key}Qty" type="number" min="0" step="1" value="0" aria-label="${escapeHtml(extraLabel(key, label))} quantity">
+    </div>
+  `;
+}
+
 function renderExtras() {
   const product = products[current];
   $("extrasList").innerHTML = activeExtraDefs(product).map(([key, label, price]) => product?.isEvCharger ? `
@@ -1645,18 +1814,29 @@ function renderExtras() {
       <input id="${key}Price" type="hidden" value="${price}">
       <input class="extra-qty" id="${key}Qty" type="checkbox" value="1" aria-label="${escapeHtml(label)}">
     </label>
-  ` : `
-    <div class="extra-item" data-extra-key="${key}">
-      <label class="extra-price-field">
-        <strong class="extra-label">${escapeHtml(extraLabel(key, label))}</strong>
-        <input id="${key}Price" type="number" min="0" step="1" value="${price}" ${editableExtraPriceKeys.has(key) ? "" : "readonly"} aria-label="${escapeHtml(extraLabel(key, label))} price">
-      </label>
-      <input class="extra-qty" id="${key}Qty" type="number" min="0" step="1" value="0" aria-label="${escapeHtml(extraLabel(key, label))} quantity">
-    </div>
-  `).join("");
+  ` : fixedDropdownExtraOptions[key] ? fixedDropdownExtraHtml(key, label)
+    : key === "tesla" ? teslaExtraHtml(label)
+      : standardExtraHtml(key, label, price)).join("");
   activeExtraDefs(product).forEach(([key]) => {
     const qty = $(key + "Qty");
     const price = $(key + "Price");
+    const select = $(`${key}Select`);
+    if (select) {
+      select.addEventListener("change", () => {
+        setFixedDropdownExtra(key, select.value ? 1 : 0, select.value);
+        update();
+      });
+      return;
+    }
+    if (key === "tesla") {
+      document.querySelectorAll('#teslaBaseSelect, #teslaAddon200, #teslaAddon500').forEach((input) => {
+        input.addEventListener("change", () => {
+          syncTeslaEvHiddenFields();
+          update();
+        });
+      });
+      return;
+    }
     qty.addEventListener(qty.type === "checkbox" ? "change" : "input", update);
     price.addEventListener("input", update);
   });
@@ -1832,6 +2012,10 @@ function quoteExtraQty(key, valuesByField = null) {
   return valuesByField ? Number(valuesByField[key] || 0) : controlQty(`${key}Qty`);
 }
 
+function quoteExtraPrice(key, valuesByField = null) {
+  return valuesByField ? Number(valuesByField[`${key}Price`] || 0) : controlNum(`${key}Price`);
+}
+
 function quoteSolarLabel(solarSize) {
   return quoteSizeLabel(solarSize);
 }
@@ -1988,6 +2172,8 @@ function excelBrandNotes(product, result, valuesByField = null) {
 
 function excelDescriptionLines(product, valuesByField = null) {
   const lines = [];
+  const customQty = quoteExtraQty("custom", valuesByField);
+  const customPrice = quoteExtraPrice("custom", valuesByField);
 
   if (quoteExtraQty("removal", valuesByField) > 0) lines.push("* Panel Removal & Disposal");
   if (quoteExtraQty("rewiring", valuesByField) > 0) lines.push("* Panel Rewiring to New Hybrid Inverter");
@@ -2004,18 +2190,17 @@ function excelDescriptionLines(product, valuesByField = null) {
 
   if (hasEssentialBackup) {
     lines.push("* Blackout Protection for Essential Loads Included\n(Backup for 2 selected circuits, usually the fridge and lights)");
-  } else if (!hasWholeHomeBackup) {
-    lines.push("* Blackout Protection NOT Included\n(Optional essential-load backup: $600 for 2 circuits, usually fridge and lights)");
   }
 
   if (hasWholeHomeBackup) {
     lines.push("* Blackout Protection for Full-house Backup Included for $2,000 with\n(Backup for 2 selected circuits, usually the fridge and lights)");
-  } else if (product.brand === "Sigenergy" && !hasEssentialBackup) {
-    lines.push("* Blackout Protection NOT Included\n(Optional Full-house backup: $2,000 for extra Sigenergy Gateway Box)");
   }
 
   const evDescription = selectedEvChargerDescription(product, valuesByField);
   if (evDescription) lines.push(evDescription);
+  if (customQty > 0 && customPrice > 0) {
+    lines.push(`* Custom extra: ${fmt(customPrice)} x ${customQty}`);
+  }
 
   const productNote = cleanText(product.productNote);
   if (/hws|hot water/i.test(productNote)) {
@@ -2105,8 +2290,8 @@ function estimateBase(product, options = {}) {
     const quantity = useCurrentInputs ? controlQty("batteryQty") : valuesByField.batteryQty ?? product.batQty ?? 1;
     const base = (product.basePrice || 1995) * quantity;
     const extras = useCurrentInputs
-      ? activeExtraDefs(product).reduce((sum, [key]) => sum + controlQty(key + "Qty") * controlNum(key + "Price"), 0)
-      : 0;
+      ? activeExtrasTotal(product)
+      : customExtraTotal(valuesByField);
     return {
       base,
       final: base + extras,
@@ -2123,9 +2308,10 @@ function estimateBase(product, options = {}) {
   const productTotal = product.inv * product.invQty + product.bat * batteryQty + product.panelPrice * panelQty + 67 * panelQty * 1.4;
   const base = productTotal * product.margin + 2000 + 300 * solarSize + 30 * batterySize - batteryCredit - solarCredit - (product.acCoupled ? 0 : WA_BATTERY_REBATE);
   const promoApplied = USE_PROMO_FLOOR && product.min > base;
+  const customExtras = useCurrentInputs ? customExtraTotal() : customExtraTotal(valuesByField);
   return {
     base,
-    final: promoApplied ? product.min : base,
+    final: (promoApplied ? product.min : base) + customExtras,
     promoApplied
   };
 }

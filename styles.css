@@ -376,6 +376,65 @@ input:focus {
   cursor: default;
 }
 
+.extra-item-select {
+  grid-template-columns: minmax(84px, 1fr) 112px;
+}
+
+.extra-item-select select {
+  height: 36px;
+  min-height: 36px;
+  padding: 6px 8px;
+  font-weight: 800;
+}
+
+.extra-item-tesla {
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(110px, 0.85fr) minmax(0, 1.8fr);
+  align-items: start;
+}
+
+.tesla-options {
+  display: grid;
+  gap: 8px;
+}
+
+.tesla-options select {
+  height: 36px;
+  min-height: 36px;
+  padding: 6px 8px;
+  font-weight: 800;
+}
+
+.tesla-option-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.tesla-option-group label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px;
+  border: 1px solid #c8d1df;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.tesla-option-group input {
+  width: 14px;
+  height: 14px;
+  min-height: 14px;
+  padding: 0;
+  accent-color: var(--blue);
+}
+
 .ev-extra-item {
   cursor: pointer;
 }
@@ -773,6 +832,10 @@ dd {
   }
 
   .extras-list {
+    grid-template-columns: 1fr;
+  }
+
+  .extra-item-tesla {
     grid-template-columns: 1fr;
   }
 
