@@ -284,6 +284,10 @@ const setText = (id, value) => {
   const element = $(id);
   if (element) element.textContent = value;
 };
+const estimatedInstallationMonth = (date = new Date()) => {
+  const nextMonth = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+  return nextMonth.toLocaleString("en-AU", { month: "long", year: "numeric" });
+};
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
   "&": "&amp;",
   "<": "&lt;",
@@ -2281,6 +2285,10 @@ function excelBrandNotes(product, result, valuesByField = null) {
   const noteKey = product.brand === "Sigenergy" ? "Sigenergy" : product.brand;
   const baseNotes = pylonNotes[noteKey] || generalPylonNotes.join("\n");
   let notes = notesWithConfiguredDimensions(product, result, baseNotes);
+  notes = notes.replace(
+    /\* Estimated installation: [A-Za-z]+ \d{4}/g,
+    `* Estimated installation: ${estimatedInstallationMonth()}`
+  );
   notes = notes.replace(/\n?\* Tile\/Tin roof, Single\/Double storey, 1\/3 phase\n?/g, "\n");
   if (quoteExtraQty("enclosure8", valuesByField) > 0 || quoteExtraQty("enclosure12", valuesByField) > 0) {
     notes = notes.replace(/\n?\* External Enclosure Box \(if needed\)\n?/g, "\n");
