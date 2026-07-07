@@ -272,7 +272,7 @@ https://maps.app.goo.gl/6M1xGfUHEaWAs252A?g_st=ic/`
 const generalPylonNotes = [
   "* Tile/Tin roof, Single/Double storey, 1/3 phase",
   "* Panel Removal & Disposal",
-  "* Panel Rewiring to New Hybrid Inverter",
+  "* Solar DC Cable Rewiring to New Hybrid Inverter",
   "* External Enclosure Box (if needed)",
   "* $10k Govt interest-free loan via Plenti (Income <$210k, ~20% approval rate), proceed if declined",
   "* Switchboard upgrade required due to asbestos compliance",
@@ -2310,7 +2310,7 @@ function excelDescriptionLines(product, valuesByField = null) {
   const lines = [];
 
   if (quoteExtraQty("removal", valuesByField) > 0) lines.push("* Panel Removal & Disposal");
-  if (quoteExtraQty("rewiring", valuesByField) > 0) lines.push("* Panel Rewiring to New Hybrid Inverter");
+  if (quoteExtraQty("rewiring", valuesByField) > 0) lines.push("* Solar DC Cable Rewiring to New Hybrid Inverter");
   if (quoteExtraQty("enclosure8", valuesByField) > 0 || quoteExtraQty("enclosure12", valuesByField) > 0) {
     lines.push("* External Enclosure Box Included");
   }
@@ -2643,8 +2643,9 @@ async function copyTextToClipboard(text) {
 
 async function copyFinalPrice() {
   const price = $("finalPrice")?.textContent.trim();
-  if (!price) return;
-  const copied = await copyTextToClipboard(price);
+  const numericPrice = price?.replace(/[^\d.-]/g, "");
+  if (!numericPrice) return;
+  const copied = await copyTextToClipboard(numericPrice);
   if (!copied) return;
   const note = $("priceNote");
   const previousNote = note?.textContent || "";
